@@ -1,0 +1,35 @@
+name: caredify
+description: CAREDIFY - Application de télésurveillance cardiaque
+version: 1.0.0+1
+
+environment:
+  sdk: ">=3.0.0 <4.0.0"
+
+dependencies:
+  flutter:
+    sdk: flutter
+  
+  # ✅ SUPABASE (PostgreSQL) - Remplace Firebase
+  supabase_flutter: ^2.3.4
+  
+  # ✅ Autres dépendances (conservées)
+  provider: ^6.1.2
+  shared_preferences: ^2.2.3
+  fl_chart: ^0.69.0
+  flutter_map: ^7.0.2
+  latlong2: ^0.9.1
+  intl: ^0.19.0
+  google_fonts: ^6.2.1
+  percent_indicator: ^4.2.3
+  cupertino_icons: ^1.0.6
+  
+  # ✅ Optionnel : Pour stockage local sécurisé (mots de passe, tokens)
+  flutter_secure_storage: ^9.0.0
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^3.0.0
+
+flutter:
+  uses-material-design: true

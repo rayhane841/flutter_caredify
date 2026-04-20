@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "642398196826",
+    "project_id": "caredify-15288",
+    "storage_bucket": "caredify-15288.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:642398196826:android:ad7108536cab8a60ffb463",
+        "android_client_info": {
+          "package_name": "com.example.caredify"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyAWJexEO_hFOKAL4WTyUUHj1q6_PpWlk2w"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
