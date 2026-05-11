@@ -9,27 +9,76 @@ dependencies:
   flutter:
     sdk: flutter
   
-  # ✅ SUPABASE (PostgreSQL) - Remplace Firebase
+  # ✅ SUPABASE (Backend PostgreSQL)
   supabase_flutter: ^2.3.4
+  flutter_foreground_task: ^8.12.0
   
-  # ✅ Autres dépendances (conservées)
+  # ✅ Gestion d'état
   provider: ^6.1.2
+  
+  # ✅ Stockage local
   shared_preferences: ^2.2.3
+  flutter_secure_storage: ^9.0.0
+  
+  # ✅ Graphiques & Visualisation
   fl_chart: ^0.69.0
+  percent_indicator: ^4.2.3
+  
+  # ✅ Carte & Géolocalisation
   flutter_map: ^7.0.2
   latlong2: ^0.9.1
+  geolocator: ^11.0.0          # ← ✅ NOUVEAU : Géolocalisation GPS
+  
+  # ✅ Bluetooth BLE (Movesense)
+  flutter_reactive_ble: ^5.0.3
+  permission_handler: ^11.0.0
+
+  # ✅ Utilitaires
   intl: ^0.19.0
   google_fonts: ^6.2.1
-  percent_indicator: ^4.2.3
-  cupertino_icons: ^1.0.6
   
-  # ✅ Optionnel : Pour stockage local sécurisé (mots de passe, tokens)
-  flutter_secure_storage: ^9.0.0
+  # ✅ Export PDF 🆕
+  pdf: ^3.10.4
+  printing: ^5.11.0
+  
+  # ✅ Icônes Material
+  cupertino_icons: ^1.0.6
 
 dev_dependencies:
   flutter_test:
     sdk: flutter
   flutter_lints: ^3.0.0
+  
+  # ✅ Personnalisation Splash Screen & Icône
+  flutter_native_splash: ^2.4.3
+  flutter_launcher_icons: ^0.14.3
 
 flutter:
   uses-material-design: true
+  
+  # ✅ Assets (images, logos, etc.)
+  assets:
+    - assets/
+
+# ═══════════════════════════════════════════════════════════
+# ⚙️ CONFIGURATION SPLASH SCREEN (Écran de démarrage natif)
+# ═══════════════════════════════════════════════════════════
+flutter_native_splash:
+  color: "#1A47C0"          # Fond bleu Caredify
+  image: assets/logo.png    # Logo PNG transparent 512x512 recommandé
+  android: true
+  ios: true
+  # Optionnel : Support mode sombre
+  # color_dark: "#0A1F5C"
+  # image_dark: assets/logo_dark.png
+
+# ═══════════════════════════════════════════════════════════
+# 📱 CONFIGURATION ICÔNE APPLICATION (Écran d'accueil)
+# ═══════════════════════════════════════════════════════════
+flutter_launcher_icons:
+  android: true
+  ios: true
+  image_path: "assets/logo.png"        # PNG 1024x1024 recommandé
+  adaptive_icon_background: "#1A47C0"  # Fond icône adaptative Android 13+
+  adaptive_icon_foreground: "assets/logo.png"
+  remove_alpha_ios: trues

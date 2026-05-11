@@ -1,5 +1,9 @@
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
+import '../providers/app_provider.dart';
 import 'auth/sign_in_screen.dart';
+import '../main.dart';
 
 class SplashScreen extends StatefulWidget {
   const SplashScreen({super.key});
@@ -29,7 +33,43 @@ class _SplashScreenState extends State<SplashScreen>
     );
     _controller.forward();
 
-    Future.delayed(const Duration(milliseconds: 2500), () {
+    // ✅ Vérifier l'authentification et naviguer
+    _checkAuthAndNavigate();
+  }
+
+  Future<void> _checkAuthAndNavigate() async {
+    // Attendre l'animation du splash
+    await Future.delayed(const Duration(milliseconds: 2000));
+    
+    if (!mounted) return;
+    
+    final app = Provider.of<AppProvider>(context, listen: false);
+    final supabase = Supabase.instance.client;
+    
+    // ✅ Vérifier si l'utilisateur a une session active (Supabase persiste automatiquement)
+    final session = supabase.auth.currentSession;
+    final user = supabase.auth.currentUser;
+    
+    if (session != null && user != null) {
+      print('✅ [SPLASH] User authenticated: ${user.email}');
+      
+      // ✅ Initialiser l'état persistant (profil + monitoring)
+      await app.initializeAfterAuth();
+      
+      // ✅ Naviguer vers MainShell
+      if (mounted) {
+        Navigator.of(context).pushReplacement(
+          PageRouteBuilder(
+            pageBuilder: (_, __, ___) => const MainShell(),
+            transitionsBuilder: (_, anim, __, child) =>
+                FadeTransition(opacity: anim, child: child),
+            transitionDuration: const Duration(milliseconds: 400),
+          ),
+        );
+      }
+    } else {
+      print('🔹 [SPLASH] No active session');
+      // ✅ Naviguer vers SignIn
       if (mounted) {
         Navigator.of(context).pushReplacement(
           PageRouteBuilder(
@@ -40,7 +80,7 @@ class _SplashScreenState extends State<SplashScreen>
           ),
         );
       }
-    });
+    }
   }
 
   @override
@@ -61,7 +101,6 @@ class _SplashScreenState extends State<SplashScreen>
             child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
-                // Logo circle
                 Container(
                   width: 88,
                   height: 88,

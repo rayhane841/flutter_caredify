@@ -1,14 +1,16 @@
 class PatientProfile {
-  final String name;
-  final int age;
-  final String patientId;
-  final String cardiologist;
-  final String bloodType;
-  final List<String> conditions;
-  final List<String> medications;
-  final String emergencyContact;
+  //classe pour stocker les informations du patient qui seront affichees dans le dashboard et aussi dans le profile
+  final String name; //nom du patient
+  final int age; //age du patient
+  final String patientId; //id du patient
+  final String cardiologist; //nom du cardiologue qui suit le patient
+  final String bloodType; //type de sang du patient
+  final List<String> conditions; //liste des conditions medicales du patient
+  final List<String> medications; //liste des medicaments que le patient prend
+  final String emergencyContact; // contact d'urgence du patient
 
   PatientProfile({
+    //constructeur de la classe patientprofile qui prend en parametre les differents proprietes de la classe pour creer une instance de patientprofile
     required this.name,
     required this.age,
     required this.patientId,
@@ -20,6 +22,7 @@ class PatientProfile {
   });
 
   static PatientProfile get defaultProfile => PatientProfile(
+        //une instance par defaut du profile du patient qui sera utilisee lors de la premiere utilisation de l'application ou lorque les données du profile sont réinitialisées
         name: 'Jean Dupont',
         age: 67,
         patientId: 'CAR-2024-00142',
@@ -31,6 +34,7 @@ class PatientProfile {
       );
 
   Map<String, dynamic> toJson() => {
+        //une methode pour convertir une instance de patientprofile en json pour pouvoir le sauvegarde dans shared prefernces (wela transmettre a une api)
         'name': name,
         'age': age,
         'patientId': patientId,
@@ -42,6 +46,7 @@ class PatientProfile {
       };
 
   factory PatientProfile.fromJson(Map<String, dynamic> json) => PatientProfile(
+        //une factory pour creer une instance de patientprofile a partir d'un json (lorsque on recupere les donneés )
         name: json['name'] as String,
         age: json['age'] as int,
         patientId: json['patientId'] as String,
@@ -53,6 +58,7 @@ class PatientProfile {
       );
 
   PatientProfile copyWith({
+    //une methode pour faire les mise a jour du profile
     String? name,
     int? age,
     String? patientId,
@@ -63,6 +69,7 @@ class PatientProfile {
     String? emergencyContact,
   }) =>
       PatientProfile(
+        //une methode pour faire les mise a jour du profile en creant une nouvelle instance de patientprofile avec les nouvellle valeurs si elles sont fournies ou les anciennes valeurs
         name: name ?? this.name,
         age: age ?? this.age,
         patientId: patientId ?? this.patientId,

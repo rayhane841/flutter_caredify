@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../providers/app_provider.dart';
 import '../theme/app_theme.dart';
+import '../utils/theme_helper.dart'; // ← NOUVEL IMPORT
 import '../models/ecg_reading.dart';
 import '../widgets/status_badge.dart';
 import '../widgets/risk_gauge.dart';
@@ -15,11 +16,14 @@ class ResultsScreen extends StatelessWidget {
       builder: (context, app, _) {
         final reading = app.lastReading;
         if (reading == null) {
+          final textSecondary = ThemeHelper.textSecondary(context);
+          final textHint = ThemeHelper.textHint(context);
           return Scaffold(
-            backgroundColor: AppColors.background,
+            backgroundColor: ThemeHelper.background(context),
             appBar: AppBar(
               title: const Text('Résultats'),
-              backgroundColor: AppColors.surface,
+              backgroundColor: ThemeHelper.surface(context),
+              foregroundColor: ThemeHelper.textPrimary(context),
               elevation: 0,
             ),
             body: SafeArea(
@@ -28,28 +32,32 @@ class ResultsScreen extends StatelessWidget {
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    Icon(Icons.monitor_heart_outlined, size: 64, color: AppColors.textHint),
+                    Icon(Icons.monitor_heart_outlined,
+                        size: 64, color: textHint),
                     const SizedBox(height: 16),
                     Text(
                       'Aucune mesure récente',
-                      style: TextStyle(fontSize: 18, fontWeight: FontWeight.w600, color: AppColors.textSecondary),
+                      style: TextStyle(
+                          fontSize: 18,
+                          fontWeight: FontWeight.w600,
+                          color: textSecondary),
                     ),
                     const SizedBox(height: 8),
                     Text(
                       'Lancez un enregistrement ECG\npour voir vos résultats',
-                      style: TextStyle(fontSize: 14, color: AppColors.textHint),
+                      style: TextStyle(fontSize: 14, color: textHint),
                       textAlign: TextAlign.center,
                     ),
-                  ], // ← Ferme children: []
-                ), // ← Ferme Column
-              ), // ← Ferme Center
-            ), // ← Ferme SafeArea
-          ); // ← ✅ Ferme return Scaffold (premier)
+                  ],
+                ),
+              ),
+            ),
+          );
         }
         return _ResultDetail(reading: reading);
-      }, // ← Ferme builder: (context, app, _)
-    ); // ← ✅ Ferme return Consumer<AppProvider>
-  } // ← Ferme Widget build
+      },
+    );
+  }
 }
 
 // ==================== _ResultDetail ====================
@@ -58,25 +66,28 @@ class _ResultDetail extends StatelessWidget {
   final EcgReading reading;
   const _ResultDetail({required this.reading});
 
-  Color get _bgColor {
+  Color _getBgColor(BuildContext context) {
     switch (reading.status) {
       case HealthStatus.normal:
-        return AppColors.normalLight;
+        return ThemeHelper.getColor(
+            context, AppColors.normalLight, AppColors.darkSurfaceVariant);
       case HealthStatus.suspect:
-        return AppColors.warningLight;
+        return ThemeHelper.getColor(
+            context, AppColors.warningLight, AppColors.darkSurfaceVariant);
       case HealthStatus.critical:
-        return AppColors.criticalLight;
+        return ThemeHelper.getColor(
+            context, AppColors.criticalLight, AppColors.darkSurfaceVariant);
     }
   }
 
-  Color get _mainColor {
+  Color _getMainColor(BuildContext context) {
     switch (reading.status) {
       case HealthStatus.normal:
-        return AppColors.normal;
+        return ThemeHelper.normal(context);
       case HealthStatus.suspect:
-        return AppColors.warning;
+        return ThemeHelper.warning(context);
       case HealthStatus.critical:
-        return AppColors.critical;
+        return ThemeHelper.critical(context);
     }
   }
 
@@ -115,15 +126,24 @@ class _ResultDetail extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final bg = ThemeHelper.background(context);
+    final surface = ThemeHelper.surface(context);
+    final border = ThemeHelper.border(context);
+    final textPrimary = ThemeHelper.textPrimary(context);
+    final textSecondary = ThemeHelper.textSecondary(context);
+    final mainColor = _getMainColor(context);
+    final statusBg = _getBgColor(context);
+
     return Scaffold(
-      backgroundColor: AppColors.background,
+      backgroundColor: bg,
       appBar: AppBar(
         title: const Text('Résultats ECG'),
-        backgroundColor: AppColors.surface,
+        backgroundColor: surface,
+        foregroundColor: textPrimary,
         elevation: 0,
         bottom: PreferredSize(
           preferredSize: const Size.fromHeight(1),
-          child: Container(height: 1, color: AppColors.border),
+          child: Container(height: 1, color: border),
         ),
       ),
       body: SafeArea(
@@ -137,30 +157,26 @@ class _ResultDetail extends StatelessWidget {
                 width: double.infinity,
                 padding: const EdgeInsets.all(24),
                 decoration: BoxDecoration(
-                  color: _bgColor,
+                  color: statusBg,
                   borderRadius: BorderRadius.circular(20),
-                  border: Border.all(color: _mainColor.withOpacity(0.2)),
+                  border: Border.all(color: mainColor.withOpacity(0.2)),
                 ),
                 child: Column(
                   children: [
-                    Icon(_icon, size: 60, color: _mainColor),
+                    Icon(_icon, size: 60, color: mainColor),
                     const SizedBox(height: 12),
                     Text(
                       _headline,
                       style: TextStyle(
-                        fontSize: 26,
-                        fontWeight: FontWeight.w800,
-                        color: _mainColor,
-                      ),
+                          fontSize: 26,
+                          fontWeight: FontWeight.w800,
+                          color: mainColor),
                     ),
                     const SizedBox(height: 10),
                     Text(
                       _description,
-                      style: const TextStyle(
-                        fontSize: 15,
-                        color: AppColors.textPrimary,
-                        height: 1.6,
-                      ),
+                      style: TextStyle(
+                          fontSize: 15, color: textPrimary, height: 1.6),
                       textAlign: TextAlign.center,
                     ),
                     const SizedBox(height: 16),
@@ -178,7 +194,11 @@ class _ResultDetail extends StatelessWidget {
                     value: '${reading.heartRate}',
                     unit: 'bpm',
                     icon: Icons.favorite_rounded,
-                    color: AppColors.critical,
+                    color: ThemeHelper.critical(context),
+                    textPrimary: textPrimary,
+                    textSecondary: textSecondary,
+                    surface: surface,
+                    border: border,
                   ),
                   const SizedBox(width: 12),
                   _MetricCard(
@@ -186,7 +206,11 @@ class _ResultDetail extends StatelessWidget {
                     value: '${reading.riskScore}',
                     unit: '/100',
                     icon: Icons.shield_rounded,
-                    color: _mainColor,
+                    color: mainColor,
+                    textPrimary: textPrimary,
+                    textSecondary: textSecondary,
+                    surface: surface,
+                    border: border,
                   ),
                 ],
               ),
@@ -199,7 +223,11 @@ class _ResultDetail extends StatelessWidget {
                     value: '${reading.durationSeconds}',
                     unit: 'sec',
                     icon: Icons.timer_rounded,
-                    color: AppColors.primary,
+                    color: ThemeHelper.primary,
+                    textPrimary: textPrimary,
+                    textSecondary: textSecondary,
+                    surface: surface,
+                    border: border,
                   ),
                   const SizedBox(width: 12),
                   _MetricCard(
@@ -207,7 +235,11 @@ class _ResultDetail extends StatelessWidget {
                     value: '94',
                     unit: '%',
                     icon: Icons.signal_cellular_4_bar_rounded,
-                    color: AppColors.normal,
+                    color: ThemeHelper.normal(context),
+                    textPrimary: textPrimary,
+                    textSecondary: textSecondary,
+                    surface: surface,
+                    border: border,
                   ),
                 ],
               ),
@@ -217,22 +249,26 @@ class _ResultDetail extends StatelessWidget {
               Container(
                 padding: const EdgeInsets.all(24),
                 decoration: BoxDecoration(
-                  color: AppColors.surface,
+                  color: surface,
                   borderRadius: BorderRadius.circular(16),
-                  border: Border.all(color: AppColors.border),
+                  border: Border.all(color: border),
                 ),
                 child: Column(
                   children: [
-                    const Text(
+                    Text(
                       'Score de risque cardiovasculaire',
-                      style: TextStyle(fontSize: 15, fontWeight: FontWeight.w700),
+                      style: TextStyle(
+                          fontSize: 15,
+                          fontWeight: FontWeight.w700,
+                          color: textPrimary),
                     ),
                     const SizedBox(height: 20),
                     RiskGauge(score: reading.riskScore, size: 160),
                     const SizedBox(height: 16),
-                    const Text(
+                    Text(
                       'Calculé par l\'IA à partir de votre ECG,\nvotre historique et vos facteurs de risque',
-                      style: TextStyle(fontSize: 12, color: AppColors.textSecondary, height: 1.5),
+                      style: TextStyle(
+                          fontSize: 12, color: textSecondary, height: 1.5),
                       textAlign: TextAlign.center,
                     ),
                   ],
@@ -240,11 +276,11 @@ class _ResultDetail extends StatelessWidget {
               ),
               const SizedBox(height: 20),
 
-              // AI Analysis
+              // AI Analysis - garde les couleurs fixes ECG (vert/noir) pour lisibilité
               Container(
                 padding: const EdgeInsets.all(18),
                 decoration: BoxDecoration(
-                  color: const Color(0xFF0A1A0A),
+                  color: AppColors.ecgBackground, // Reste fixe pour contraste
                   borderRadius: BorderRadius.circular(16),
                 ),
                 child: Column(
@@ -252,33 +288,45 @@ class _ResultDetail extends StatelessWidget {
                   children: [
                     const Row(
                       children: [
-                        Icon(Icons.psychology_rounded, color: AppColors.ecgGreen, size: 20),
+                        Icon(Icons.psychology_rounded,
+                            color: AppColors.ecgGreen, size: 20),
                         SizedBox(width: 8),
                         Text(
                           'Analyse IA',
                           style: TextStyle(
-                            fontSize: 14,
-                            fontWeight: FontWeight.w700,
-                            color: AppColors.ecgGreen,
-                          ),
+                              fontSize: 14,
+                              fontWeight: FontWeight.w700,
+                              color: AppColors.ecgGreen),
                         ),
                       ],
                     ),
                     const SizedBox(height: 12),
                     ...[
-                      _AiLine(label: 'Rythme', value: 'Sinusal', ok: true),
-                      _AiLine(label: 'Intervalle PR', value: '162 ms (N)', ok: true),
-                      _AiLine(label: 'Complexe QRS', value: '88 ms (N)', ok: true),
-                      _AiLine(label: 'Intervalle QT', value: '412 ms (N)', ok: reading.status == HealthStatus.normal),
-                      _AiLine(label: 'Segment ST', value: reading.status == HealthStatus.normal ? 'Isoélectrique' : 'Sous-décalage ≥ 1mm', ok: reading.status == HealthStatus.normal),
+                      const _AiLine(label: 'Rythme', value: 'Sinusal', ok: true),
+                      const _AiLine(
+                          label: 'Intervalle PR',
+                          value: '162 ms (N)',
+                          ok: true),
+                      const _AiLine(
+                          label: 'Complexe QRS', value: '88 ms (N)', ok: true),
+                      _AiLine(
+                          label: 'Intervalle QT',
+                          value: '412 ms (N)',
+                          ok: reading.status == HealthStatus.normal),
+                      _AiLine(
+                          label: 'Segment ST',
+                          value: reading.status == HealthStatus.normal
+                              ? 'Isoélectrique'
+                              : 'Sous-décalage ≥ 1mm',
+                          ok: reading.status == HealthStatus.normal),
                     ],
                     const SizedBox(height: 12),
                     Container(
                       padding: const EdgeInsets.all(12),
                       decoration: BoxDecoration(
-                        color: _mainColor.withOpacity(0.1),
+                        color: mainColor.withOpacity(0.1),
                         borderRadius: BorderRadius.circular(10),
-                        border: Border.all(color: _mainColor.withOpacity(0.3)),
+                        border: Border.all(color: mainColor.withOpacity(0.3)),
                       ),
                       child: Row(
                         children: [
@@ -286,7 +334,7 @@ class _ResultDetail extends StatelessWidget {
                             reading.status == HealthStatus.normal
                                 ? Icons.verified_rounded
                                 : Icons.pending_rounded,
-                            color: _mainColor,
+                            color: mainColor,
                             size: 18,
                           ),
                           const SizedBox(width: 8),
@@ -295,10 +343,9 @@ class _ResultDetail extends StatelessWidget {
                                 ? 'Validé par Dr. Lefebvre'
                                 : 'En attente de validation cardiologue',
                             style: TextStyle(
-                              fontSize: 13,
-                              fontWeight: FontWeight.w600,
-                              color: _mainColor,
-                            ),
+                                fontSize: 13,
+                                fontWeight: FontWeight.w600,
+                                color: mainColor),
                           ),
                         ],
                       ),
@@ -313,39 +360,40 @@ class _ResultDetail extends StatelessWidget {
               Container(
                 padding: const EdgeInsets.all(18),
                 decoration: BoxDecoration(
-                  color: AppColors.surface,
+                  color: surface,
                   borderRadius: BorderRadius.circular(16),
-                  border: Border.all(color: AppColors.border),
+                  border: Border.all(color: border),
                 ),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    const Text(
+                    Text(
                       'Recommandations',
-                      style: TextStyle(fontSize: 15, fontWeight: FontWeight.w700),
+                      style: TextStyle(
+                          fontSize: 15,
+                          fontWeight: FontWeight.w700,
+                          color: textPrimary),
                     ),
                     const SizedBox(height: 12),
-                    ..._recommendations.map((r) => Padding(
+                    ..._recommendations(context).map((r) => Padding(
                           padding: const EdgeInsets.only(bottom: 10),
                           child: Row(
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
                               Container(
-                                width: 6,
-                                height: 6,
-                                margin: const EdgeInsets.only(top: 6),
-                                decoration: BoxDecoration(
-                                  color: _mainColor,
-                                  shape: BoxShape.circle,
-                                ),
-                              ),
+                                  width: 6,
+                                  height: 6,
+                                  margin: const EdgeInsets.only(top: 6),
+                                  decoration: BoxDecoration(
+                                      color: mainColor,
+                                      shape: BoxShape.circle)),
                               const SizedBox(width: 10),
                               Expanded(
-                                child: Text(
-                                  r,
-                                  style: const TextStyle(fontSize: 14, height: 1.4),
-                                ),
-                              ),
+                                  child: Text(r,
+                                      style: TextStyle(
+                                          fontSize: 14,
+                                          height: 1.4,
+                                          color: textPrimary))),
                             ],
                           ),
                         )),
@@ -354,35 +402,35 @@ class _ResultDetail extends StatelessWidget {
               ),
 
               const SizedBox(height: 100),
-            ], // ← Ferme children: []
-          ), // ← Ferme Column
-        ), // ← Ferme SingleChildScrollView
-      ), // ← Ferme SafeArea
-    ); // ← ✅ Ferme return Scaffold (deuxième)
-  } // ← Ferme Widget build de _ResultDetail
+            ],
+          ),
+        ),
+      ),
+    );
+  }
 
-  List<String> get _recommendations {
+  List<String> _recommendations(BuildContext context) {
     switch (reading.status) {
       case HealthStatus.normal:
         return [
           'Continuez votre surveillance régulière',
           'Maintenez votre traitement anticoagulant',
           'Évitez la caféine excessive',
-          'Prochain RDV : voir avec Dr. Lefebvre',
+          'Prochain RDV : voir avec Dr. Lefebvre'
         ];
       case HealthStatus.suspect:
         return [
           'Evitez tout effort physique',
           'Restez allongé(e) et au repos',
           'Gardez votre téléphone à portée',
-          'Contactez Dr. Lefebvre dès que possible',
+          'Contactez Dr. Lefebvre dès que possible'
         ];
       case HealthStatus.critical:
         return [
           'Restez allongé(e) immédiatement',
           'Alertez une personne proche si possible',
           'Ne prenez aucun médicament supplémentaire',
-          'Appuyez sur le bouton Urgence si nécessaire',
+          'Appuyez sur le bouton Urgence si nécessaire'
         ];
     }
   }
@@ -391,11 +439,9 @@ class _ResultDetail extends StatelessWidget {
 // ==================== _MetricCard ====================
 
 class _MetricCard extends StatelessWidget {
-  final String label;
-  final String value;
-  final String unit;
+  final String label, value, unit;
   final IconData icon;
-  final Color color;
+  final Color color, textPrimary, textSecondary, surface, border;
 
   const _MetricCard({
     required this.label,
@@ -403,6 +449,10 @@ class _MetricCard extends StatelessWidget {
     required this.unit,
     required this.icon,
     required this.color,
+    required this.textPrimary,
+    required this.textSecondary,
+    required this.surface,
+    required this.border,
   });
 
   @override
@@ -411,37 +461,30 @@ class _MetricCard extends StatelessWidget {
       child: Container(
         padding: const EdgeInsets.all(16),
         decoration: BoxDecoration(
-          color: AppColors.surface,
-          borderRadius: BorderRadius.circular(14),
-          border: Border.all(color: AppColors.border),
-        ),
+            color: surface,
+            borderRadius: BorderRadius.circular(14),
+            border: Border.all(color: border)),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Icon(icon, size: 20, color: color),
             const SizedBox(height: 10),
-            Row(
-              crossAxisAlignment: CrossAxisAlignment.end,
-              children: [
-                Text(
-                  value,
+            Row(crossAxisAlignment: CrossAxisAlignment.end, children: [
+              Text(value,
                   style: TextStyle(
-                    fontSize: 28,
-                    fontWeight: FontWeight.w800,
-                    color: AppColors.textPrimary,
-                    letterSpacing: -0.5,
-                  ),
-                ),
-                Padding(
+                      fontSize: 28,
+                      fontWeight: FontWeight.w800,
+                      color: textPrimary,
+                      letterSpacing: -0.5)),
+              Padding(
                   padding: const EdgeInsets.only(bottom: 4, left: 2),
-                  child: Text(
-                    unit,
-                    style: const TextStyle(fontSize: 12, color: AppColors.textSecondary, fontWeight: FontWeight.w500),
-                  ),
-                ),
-              ],
-            ),
-            Text(label, style: const TextStyle(fontSize: 12, color: AppColors.textSecondary)),
+                  child: Text(unit,
+                      style: TextStyle(
+                          fontSize: 12,
+                          color: textSecondary,
+                          fontWeight: FontWeight.w500))),
+            ]),
+            Text(label, style: TextStyle(fontSize: 12, color: textSecondary)),
           ],
         ),
       ),
@@ -452,10 +495,8 @@ class _MetricCard extends StatelessWidget {
 // ==================== _AiLine ====================
 
 class _AiLine extends StatelessWidget {
-  final String label;
-  final String value;
+  final String label, value;
   final bool ok;
-
   const _AiLine({required this.label, required this.value, required this.ok});
 
   @override
@@ -464,25 +505,17 @@ class _AiLine extends StatelessWidget {
       padding: const EdgeInsets.only(bottom: 8),
       child: Row(
         children: [
-          Icon(
-            ok ? Icons.check_rounded : Icons.warning_rounded,
-            size: 16,
-            color: ok ? AppColors.ecgGreen : AppColors.warning,
-          ),
+          Icon(ok ? Icons.check_rounded : Icons.warning_rounded,
+              size: 16, color: ok ? AppColors.ecgGreen : AppColors.warning),
           const SizedBox(width: 8),
-          Text(
-            label,
-            style: const TextStyle(fontSize: 13, color: Color(0xFF4CAF50)),
-          ),
+          Text(label,
+              style: const TextStyle(fontSize: 13, color: Color(0xFF4CAF50))),
           const Spacer(),
-          Text(
-            value,
-            style: TextStyle(
-              fontSize: 13,
-              fontWeight: FontWeight.w600,
-              color: ok ? Colors.white : AppColors.warning,
-            ),
-          ),
+          Text(value,
+              style: TextStyle(
+                  fontSize: 13,
+                  fontWeight: FontWeight.w600,
+                  color: ok ? Colors.white : AppColors.warning)),
         ],
       ),
     );

@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<paths xmlns:android="http://schemas.android.com/apk/res/android">
+    <!-- Dossier de cache pour les exports PDF -->
+    <cache-path name="cache" path="."/>
+    <!-- Dossier de fichiers pour les exports -->
+    <files-path name="files" path="."/>
+    <!-- Dossier externe pour Android <10 -->
+    <external-files-path name="external_files" path="."/>
+</paths>
