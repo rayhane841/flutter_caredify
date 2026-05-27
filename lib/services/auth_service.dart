@@ -7,34 +7,29 @@ class AuthService {
   Stream<AuthState> get authStateChanges => _supabase.auth.onAuthStateChange;
 
   // ════════════════════════════════════════════════════════
-  // ✅ Récupérer les cardiologues — fonctionne SANS session
+  // ✅ Cardiologues actifs — via RPC + filtre status='active'
   // ════════════════════════════════════════════════════════
   Future<List<Map<String, dynamic>>> getCardiologists() async {
     try {
-      print('🔹 [AUTH] Fetching cardiologists...');
-      print(
-          '🔹 [AUTH] User connected: ${_supabase.auth.currentUser?.id ?? "NOT CONNECTED"}');
+      print('🔹 [AUTH] Fetching active cardiologists via RPC...');
 
-      // ✅ Lecture directe — la politique RLS "public_read_cardiologues"
-      // autorise la lecture sans authentification
-      final response = await _supabase
-          .from('profiles')
-          .select('id, full_name, specialty')
-          .eq('role', 'carediologue')
-          .order('full_name', ascending: true);
+      final response = await _supabase.rpc('get_cardiologist_profiles');
 
-      print('🔹 [AUTH] Raw response: ${response.length} rows');
-
-      if (response.isEmpty) {
-        print('⚠️ [AUTH] 0 cardiologists found — check RLS policies');
+      if (response == null || (response as List).isEmpty) {
+        print('⚠️ [AUTH] 0 cardiologists found');
         return [];
       }
 
-      for (var row in response) {
-        print('   ✓ ${row['full_name']} | ${row['specialty']}');
-      }
+      // ✅ Filtrer uniquement les cardiologues avec status = 'active'
+      final activeCardiologists = (response as List).where((c) {
+        final status = (c['status'] ?? '').toString().toLowerCase().trim();
+        return status == 'active';
+      }).toList();
 
-      final cardiologists = (response as List).map((c) {
+      print(
+          '✅ [AUTH] ${activeCardiologists.length} active cardiologists (out of ${(response as List).length} total)');
+
+      final cardiologists = activeCardiologists.map((c) {
         final fullName = (c['full_name'] ?? 'Inconnu').toString().trim();
         final specialty = (c['specialty'] ?? '').toString().trim();
         final label = specialty.isNotEmpty && specialty != 'null'
@@ -47,13 +42,56 @@ class AuthService {
         };
       }).toList();
 
-      print(
-          '✅ [AUTH] ${cardiologists.length} cardiologists ready for dropdown');
+      print('✅ [AUTH] ${cardiologists.length} cardiologists ready');
       return cardiologists;
     } catch (e, stack) {
       print('❌ [AUTH] Error fetching cardiologists: $e');
       print('❌ [AUTH] Stack: $stack');
       return [];
+    }
+  }
+
+  // ════════════════════════════════════════════════════════
+  // ✅ Résoudre cardiologist_id depuis label — via RPC (actifs uniquement)
+  // ════════════════════════════════════════════════════════
+  Future<String?> _resolveCardiologistId(String cardiologistLabel) async {
+    if (cardiologistLabel.isEmpty) return null;
+    try {
+      String searchName = cardiologistLabel.trim();
+      if (searchName.startsWith('Dr. '))
+        searchName = searchName.substring(4).trim();
+      if (searchName.contains(' - '))
+        searchName = searchName.split(' - ')[0].trim();
+
+      print('🔍 [AUTH] Recherche cardiologue: "$searchName"');
+
+      final response = await _supabase.rpc('get_cardiologist_profiles');
+      if (response == null) return null;
+
+      // ✅ Filtrer les actifs avant de chercher
+      final list = (response as List).where((c) {
+        final status = (c['status'] ?? '').toString().toLowerCase().trim();
+        return status == 'active';
+      }).toList();
+
+      final found = list.firstWhere(
+        (c) => (c['full_name'] as String? ?? '')
+            .toLowerCase()
+            .contains(searchName.toLowerCase()),
+        orElse: () => null,
+      );
+
+      if (found != null) {
+        print(
+            '✅ [AUTH] Cardiologue trouvé: ${found['full_name']} → ${found['id']}');
+        return found['id'] as String?;
+      }
+
+      print('⚠️ [AUTH] Cardiologue non trouvé pour: "$searchName"');
+      return null;
+    } catch (e) {
+      print('❌ [AUTH] Erreur résolution cardiologue: $e');
+      return null;
     }
   }
 
@@ -74,6 +112,10 @@ class AuthService {
     required String medicalHistory,
     required String allergies,
     String cardiologist = '',
+    // ✅ Antécédents cardiaques — step 3
+    bool? antecedentInfarctus,
+    bool? antecedentTroubleRythme,
+    bool? antecedentHospitalisation,
   }) async {
     try {
       print('🔹 [AUTH] Starting signUp for: $email');
@@ -91,7 +133,6 @@ class AuthService {
       final userId = authResponse.user!.id;
       print('✅ [AUTH] User created: $userId');
 
-      // Attendre que Supabase crée la session
       await Future.delayed(const Duration(seconds: 1));
 
       final signInResponse = await _supabase.auth.signInWithPassword(
@@ -106,6 +147,9 @@ class AuthService {
 
       print('✅ [AUTH] Session active');
       await Future.delayed(const Duration(milliseconds: 500));
+
+      final cardiologistId = await _resolveCardiologistId(cardiologist);
+      print('✅ [AUTH] cardiologist_id résolu: $cardiologistId');
 
       final patientData = {
         'id': userId,
@@ -124,7 +168,12 @@ class AuthService {
         'allergies': allergies,
         'patient_id': 'PAT-${userId.substring(0, 8).toUpperCase()}',
         'cardiologist': cardiologist,
+        'cardiologist_id': cardiologistId,
         'emergency_contact': '',
+        // ✅ Antécédents cardiaques — noms de colonnes Supabase en français
+        'antecedent_infarctus': antecedentInfarctus,
+        'antecedent_trouble_rythme': antecedentTroubleRythme,
+        'antecedent_hospitalisation': antecedentHospitalisation,
         'created_at': DateTime.now().toIso8601String(),
         'updated_at': DateTime.now().toIso8601String(),
       };
@@ -140,7 +189,6 @@ class AuthService {
       };
     } on AuthException catch (e) {
       print('❌ [AUTH] AuthException: ${e.message}');
-
       if (e.message.contains('Database error') ||
           e.message.contains('unexpected_failure')) {
         return await _retryAfterDatabaseError(
@@ -157,35 +205,32 @@ class AuthService {
           medicalHistory: medicalHistory,
           allergies: allergies,
           cardiologist: cardiologist,
+          antecedentInfarctus: antecedentInfarctus,
+          antecedentTroubleRythme: antecedentTroubleRythme,
+          antecedentHospitalisation: antecedentHospitalisation,
         );
       }
       return {'success': false, 'error': _getAuthErrorMessage(e.message)};
     } on PostgrestException catch (e) {
       print('❌ [AUTH] PostgrestException: ${e.message} | code: ${e.code}');
       final detailsStr = e.details?.toString() ?? '';
-
       if (e.code == '23505') {
-        if (detailsStr.contains('email')) {
+        if (detailsStr.contains('email'))
           return {'success': false, 'error': 'Cet email est déjà utilisé'};
-        }
-        if (detailsStr.contains('patient_id')) {
+        if (detailsStr.contains('patient_id'))
           return {
             'success': false,
             'error': 'ID patient déjà existant - réessayez'
           };
-        }
         return {'success': false, 'error': 'Donnée déjà existante'};
       }
-      if (e.code == '42501') {
+      if (e.code == '42501')
         return {'success': false, 'error': 'Erreur de permission RLS'};
-      }
-      if (e.code == '23502') {
+      if (e.code == '23502')
         return {
           'success': false,
           'error': 'Champ obligatoire manquant: ${e.details}'
         };
-      }
-
       return {
         'success': false,
         'error': 'Erreur base de données: ${e.message}'
@@ -214,6 +259,10 @@ class AuthService {
     required String medicalHistory,
     required String allergies,
     String cardiologist = '',
+    // ✅ Antécédents cardiaques transmis en retry
+    bool? antecedentInfarctus,
+    bool? antecedentTroubleRythme,
+    bool? antecedentHospitalisation,
   }) async {
     try {
       print('🔄 [AUTH] Retry after database error...');
@@ -245,6 +294,8 @@ class AuthService {
         return {'success': true, 'user': signIn.user, 'userId': userId};
       }
 
+      final cardiologistId = await _resolveCardiologistId(cardiologist);
+
       final patientData = {
         'id': userId,
         'email': email,
@@ -262,7 +313,12 @@ class AuthService {
         'allergies': allergies,
         'patient_id': 'PAT-${userId.substring(0, 8).toUpperCase()}',
         'cardiologist': cardiologist,
+        'cardiologist_id': cardiologistId,
         'emergency_contact': '',
+        // ✅ Antécédents cardiaques — noms de colonnes Supabase en français
+        'antecedent_infarctus': antecedentInfarctus,
+        'antecedent_trouble_rythme': antecedentTroubleRythme,
+        'antecedent_hospitalisation': antecedentHospitalisation,
         'created_at': DateTime.now().toIso8601String(),
         'updated_at': DateTime.now().toIso8601String(),
       };
@@ -276,7 +332,7 @@ class AuthService {
       return {
         'success': false,
         'error':
-            'Erreur lors de la création. Essayez de vous connecter directement.'
+            'Erreur lors de la création. Essayez de vous connecter directement.',
       };
     }
   }
@@ -290,16 +346,13 @@ class AuthService {
   }) async {
     try {
       print('🔹 [AUTH] Signing in: $email');
-
       final response = await _supabase.auth.signInWithPassword(
         email: email,
         password: password,
       );
-
       if (response.user == null) {
         return {'success': false, 'error': 'Échec de connexion'};
       }
-
       print('✅ [AUTH] Signed in: ${response.user?.email}');
       return {
         'success': true,
@@ -332,7 +385,6 @@ class AuthService {
           .select()
           .eq('id', userId)
           .maybeSingle();
-
       if (response == null) {
         print('⚠️ [AUTH] No patient found for: $userId');
       } else {
@@ -420,22 +472,16 @@ class AuthService {
 
   String _getAuthErrorMessage(String message) {
     if (message.contains('Invalid login credentials') ||
-        message.contains('Invalid credentials')) {
+        message.contains('Invalid credentials'))
       return 'Email ou mot de passe incorrect';
-    }
     if (message.contains('User already registered') ||
-        message.contains('duplicate key')) {
-      return 'Cet email est déjà utilisé';
-    }
-    if (message.contains('Password should be at least')) {
+        message.contains('duplicate key')) return 'Cet email est déjà utilisé';
+    if (message.contains('Password should be at least'))
       return 'Mot de passe trop court (6 caractères min)';
-    }
-    if (message.contains('Email not confirmed')) {
+    if (message.contains('Email not confirmed'))
       return 'Veuillez confirmer votre email';
-    }
-    if (message.contains('new row violates row-level security')) {
+    if (message.contains('new row violates row-level security'))
       return 'Erreur de permission - réessayez';
-    }
     return 'Erreur: $message';
   }
 }

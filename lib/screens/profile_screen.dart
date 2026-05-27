@@ -1,9 +1,10 @@
 import 'package:flutter/material.dart';
-import 'package:provider/provider.dart'; // ← ✅ Ajouté pour AppProvider
+import 'package:provider/provider.dart';
 import '../theme/app_theme.dart';
 import '../utils/theme_helper.dart';
 import '../services/auth_service.dart';
-import '../providers/app_provider.dart'; // ← ✅ Ajouté
+import '../providers/app_provider.dart';
+import '../l10n/app_localizations.dart';
 import 'notification_screen.dart';
 import 'settings_screen.dart';
 
@@ -44,25 +45,26 @@ class _ProfileScreenState extends State<ProfileScreen> {
     }
   }
 
-  String _getSafeString(dynamic value) {
-    if (value == null) return 'Non renseigné';
+  String _getSafeString(dynamic value, AppLocalizations l10n) {
+    if (value == null) return l10n.t('not_provided');
     final str = value.toString().trim();
-    return str.isEmpty ? 'Non renseigné' : str;
+    return str.isEmpty ? l10n.t('not_provided') : str;
   }
 
-  String? _validateTunisianPhone(String? value) {
-    if (value == null || value.isEmpty) return 'Numéro requis';
+  String? _validateTunisianPhone(String? value, AppLocalizations l10n) {
+    if (value == null || value.isEmpty) return l10n.t('required');
     final cleanValue =
         value.replaceAll(RegExp(r'[\s+-]'), '').replaceAll('+216', '');
     final phoneRegex = RegExp(r'^[0-9]{8}$');
     if (!phoneRegex.hasMatch(cleanValue)) {
-      return 'Numéro invalide (8 chiffres requis)';
+      return l10n.t('invalid_phone_error');
     }
     return null;
   }
 
   void _showEditProfileDialog(BuildContext context) {
     if (_patientData == null) return;
+    final l10n = AppLocalizations.of(context);
     final nameController =
         TextEditingController(text: _patientData?['name'] ?? '');
     final rawPhone = _patientData?['phone'] ?? '';
@@ -94,7 +96,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
           final textSecondary = ThemeHelper.textSecondary(context);
           return AlertDialog(
             backgroundColor: surface,
-            title: Text('Modifier le profil',
+            title: Text(l10n.t('edit_profile'),
                 style: TextStyle(color: textPrimary)),
             content: SingleChildScrollView(
               child: Column(
@@ -102,8 +104,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 children: [
                   TextField(
                       controller: nameController,
+                      style: TextStyle(color: textPrimary),
                       decoration: InputDecoration(
-                          labelText: 'Nom complet',
+                          labelText: l10n.t('full_name'),
                           border: const OutlineInputBorder(),
                           labelStyle: TextStyle(color: textSecondary),
                           enabledBorder: OutlineInputBorder(
@@ -112,9 +115,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
                               borderSide:
                                   BorderSide(color: ThemeHelper.primary)))),
                   const SizedBox(height: 12),
-                  const Text('Téléphone',
+                  Text(l10n.t('phone'),
                       style:
-                          TextStyle(fontSize: 13, fontWeight: FontWeight.w600)),
+                          const TextStyle(fontSize: 13, fontWeight: FontWeight.w600)),
                   const SizedBox(height: 8),
                   Row(children: [
                     Container(
@@ -134,6 +137,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                             controller: phoneController,
                             keyboardType: TextInputType.phone,
                             maxLength: 8,
+                            style: TextStyle(color: textPrimary),
                             decoration: InputDecoration(
                                 hintText: 'XX XXX XXX',
                                 hintStyle: TextStyle(
@@ -161,43 +165,48 @@ class _ProfileScreenState extends State<ProfileScreen> {
                                     borderSide: BorderSide(
                                         color: Color(0xFF1A47C0), width: 1.5)),
                                 counterText: ''),
-                            validator: _validateTunisianPhone))
+                            validator: (v) => _validateTunisianPhone(v, l10n)))
                   ]),
                   const SizedBox(height: 12),
                   TextField(
                       controller: bloodTypeController,
+                      style: TextStyle(color: textPrimary),
                       decoration: InputDecoration(
-                          labelText: 'Groupe sanguin',
+                          labelText: l10n.t('blood_type'),
                           border: const OutlineInputBorder(),
                           labelStyle: TextStyle(color: textSecondary))),
                   const SizedBox(height: 12),
                   TextField(
                       controller: cardiologistController,
+                      style: TextStyle(color: textPrimary),
                       decoration: InputDecoration(
-                          labelText: 'Cardiologue',
+                          labelText: l10n.t('my_cardiologist'),
                           border: const OutlineInputBorder(),
                           labelStyle: TextStyle(color: textSecondary))),
                   const SizedBox(height: 12),
                   TextField(
                       controller: weightController,
+                      style: TextStyle(color: textPrimary),
                       decoration: InputDecoration(
-                          labelText: 'Poids (kg)',
+                          labelText: l10n.t('weight'),
                           border: const OutlineInputBorder(),
                           labelStyle: TextStyle(color: textSecondary)),
                       keyboardType: TextInputType.number),
                   const SizedBox(height: 12),
                   TextField(
                       controller: heightController,
+                      style: TextStyle(color: textPrimary),
                       decoration: InputDecoration(
-                          labelText: 'Taille (cm)',
+                          labelText: l10n.t('height'),
                           border: const OutlineInputBorder(),
                           labelStyle: TextStyle(color: textSecondary)),
                       keyboardType: TextInputType.number),
                   const SizedBox(height: 12),
                   TextField(
                       controller: medicalHistoryController,
+                      style: TextStyle(color: textPrimary),
                       decoration: InputDecoration(
-                          labelText: 'Antécédents médicaux',
+                          labelText: l10n.t('history'),
                           border: const OutlineInputBorder(),
                           alignLabelWithHint: true,
                           labelStyle: TextStyle(color: textSecondary)),
@@ -205,8 +214,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   const SizedBox(height: 12),
                   TextField(
                       controller: allergiesController,
+                      style: TextStyle(color: textPrimary),
                       decoration: InputDecoration(
-                          labelText: 'Allergies',
+                          labelText: l10n.t('allergies'),
                           border: const OutlineInputBorder(),
                           alignLabelWithHint: true,
                           labelStyle: TextStyle(color: textSecondary)),
@@ -217,11 +227,11 @@ class _ProfileScreenState extends State<ProfileScreen> {
             actions: [
               TextButton(
                   onPressed: () => Navigator.pop(context),
-                  child: Text('Annuler', style: TextStyle(color: textPrimary))),
+                  child: Text(l10n.t('cancel'), style: TextStyle(color: textPrimary))),
               ElevatedButton(
                   onPressed: () async {
                     final phoneError =
-                        _validateTunisianPhone(phoneController.text);
+                        _validateTunisianPhone(phoneController.text, l10n);
                     if (phoneError != null) {
                       ScaffoldMessenger.of(context).showSnackBar(SnackBar(
                           content: Text(phoneError),
@@ -249,13 +259,13 @@ class _ProfileScreenState extends State<ProfileScreen> {
                         Navigator.pop(context);
                         _loadPatientData();
                         ScaffoldMessenger.of(context).showSnackBar(
-                            const SnackBar(
+                            SnackBar(
                                 content:
-                                    Text('Profil mis à jour avec succès')));
+                                    Text(l10n.t('profile_updated_success'))));
                       }
                     }
                   },
-                  child: const Text('Enregistrer')),
+                  child: Text(l10n.t('save'))),
             ],
           );
         },
@@ -264,22 +274,23 @@ class _ProfileScreenState extends State<ProfileScreen> {
   }
 
   void _showLogoutDialog(BuildContext context) {
+    final l10n = AppLocalizations.of(context);
     final surface = ThemeHelper.surface(context);
     final textPrimary = ThemeHelper.textPrimary(context);
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
         backgroundColor: surface,
-        title: Text('Déconnexion', style: TextStyle(color: textPrimary)),
-        content: Text('Êtes-vous sûr de vouloir vous déconnecter ?',
+        title: Text(l10n.t('logout'), style: TextStyle(color: textPrimary)),
+        content: Text(l10n.t('confirm_logout'),
             style: TextStyle(color: textPrimary)),
         actions: [
           TextButton(
               onPressed: () => Navigator.pop(context),
-              child: Text('Annuler', style: TextStyle(color: textPrimary))),
+              child: Text(l10n.t('cancel'), style: TextStyle(color: textPrimary))),
           ElevatedButton(
               onPressed: () async {
-                // ✅✅✅ NOUVEAU : Nettoyer l'état persistant AVANT déconnexion
+                // ✅ Nettoyer l'état persistant AVANT déconnexion
                 final app = Provider.of<AppProvider>(context, listen: false);
                 await app.onLogout();
                 
@@ -295,7 +306,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
               },
               style: ElevatedButton.styleFrom(
                   backgroundColor: Colors.red, foregroundColor: Colors.white),
-              child: const Text('Déconnexion')),
+              child: Text(l10n.t('logout'))),
         ],
       ),
     );
@@ -303,18 +314,18 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context);
     final bg = ThemeHelper.background(context);
     final surface = ThemeHelper.surface(context);
     final border = ThemeHelper.border(context);
     final textPrimary = ThemeHelper.textPrimary(context);
     final textSecondary = ThemeHelper.textSecondary(context);
-    final surfaceVariant = ThemeHelper.getColor(
-        context, AppColors.surfaceVariant, AppColors.darkSurfaceVariant);
+    final surfVar = surfaceVariant(context);
 
     return Scaffold(
       backgroundColor: bg,
       appBar: AppBar(
-        title: const Text('Mon profil'),
+        title: Text(l10n.t('my_profile')),
         backgroundColor: surface,
         foregroundColor: textPrimary,
         elevation: 0,
@@ -325,8 +336,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
           TextButton(
               onPressed:
                   _isLoading ? null : () => _showEditProfileDialog(context),
-              child: const Text('Modifier',
-                  style: TextStyle(
+              child: Text(l10n.t('edit'),
+                  style: const TextStyle(
                       color: Color(0xFF1A47C0), fontWeight: FontWeight.w600)))
         ],
       ),
@@ -342,12 +353,12 @@ class _ProfileScreenState extends State<ProfileScreen> {
                         Icon(Icons.error_outline,
                             size: 48, color: ThemeHelper.warning(context)),
                         const SizedBox(height: 16),
-                        Text('Aucune donnée trouvée',
+                        Text(l10n.t('no_data_found'),
                             style: TextStyle(color: textPrimary)),
                         const SizedBox(height: 8),
                         ElevatedButton(
                             onPressed: _loadPatientData,
-                            child: const Text('Réessayer'))
+                            child: Text(l10n.t('retry')))
                       ]))
                 : SingleChildScrollView(
                     padding: const EdgeInsets.all(16),
@@ -395,7 +406,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                                       color: textPrimary)),
                               const SizedBox(height: 4),
                               Text(
-                                  '${_patientData?['age'] ?? '?'} ans · ${_patientData?['blood_type'] ?? '?'}',
+                                  '${_patientData?['age'] ?? '?'} ${l10n.t('age_years')} · ${_patientData?['blood_type'] ?? '?'}',
                                   style: TextStyle(
                                       fontSize: 15, color: textSecondary)),
                               const SizedBox(height: 12),
@@ -403,7 +414,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                                   padding: const EdgeInsets.symmetric(
                                       horizontal: 14, vertical: 7),
                                   decoration: BoxDecoration(
-                                      color: surfaceVariant,
+                                      color: surfVar,
                                       borderRadius: BorderRadius.circular(100)),
                                   child: Row(
                                       mainAxisSize: MainAxisSize.min,
@@ -422,112 +433,112 @@ class _ProfileScreenState extends State<ProfileScreen> {
                             ])),
                         const SizedBox(height: 16),
                         _SectionCard(
-                            title: 'Informations personnelles',
+                            title: l10n.t('personal_info'),
                             icon: Icons.person_outline_rounded,
                             color: ThemeHelper.primary,
                             surface: surface,
                             border: border,
                             children: [
                               _InfoRow(
-                                  label: 'Nom complet',
-                                  value: _getSafeString(_patientData?['name']),
+                                  label: l10n.t('full_name'),
+                                  value: _getSafeString(_patientData?['name'], l10n),
                                   textPrimary: textPrimary,
                                   textSecondary: textSecondary),
                               _InfoRow(
-                                  label: 'Email',
-                                  value: _getSafeString(_patientData?['email']),
+                                  label: l10n.t('email'),
+                                  value: _getSafeString(_patientData?['email'], l10n),
                                   textPrimary: textPrimary,
                                   textSecondary: textSecondary),
                               _InfoRow(
-                                  label: 'Téléphone',
-                                  value: _getSafeString(_patientData?['phone']),
+                                  label: l10n.t('phone'),
+                                  value: _getSafeString(_patientData?['phone'], l10n),
                                   textPrimary: textPrimary,
                                   textSecondary: textSecondary),
                               _InfoRow(
-                                  label: 'Date de naissance',
+                                  label: l10n.t('birth_date'),
                                   value: _getSafeString(
-                                      _patientData?['birth_date']),
+                                      _patientData?['birth_date'], l10n),
                                   textPrimary: textPrimary,
                                   textSecondary: textSecondary),
                               _InfoRow(
-                                  label: 'Âge',
-                                  value: '${_patientData?['age'] ?? '?'} ans',
+                                  label: l10n.t('age'),
+                                  value: '${_patientData?['age'] ?? '?'} ${l10n.t('age_years')}',
                                   textPrimary: textPrimary,
                                   textSecondary: textSecondary)
                             ]),
                         const SizedBox(height: 12),
                         _SectionCard(
-                            title: 'Informations médicales',
+                            title: l10n.t('medical_info'),
                             icon: Icons.medical_services_outlined,
                             color: ThemeHelper.critical(context),
                             surface: surface,
                             border: border,
                             children: [
                               _InfoRow(
-                                  label: 'Groupe sanguin',
+                                  label: l10n.t('blood_type'),
                                   value: _getSafeString(
-                                      _patientData?['blood_type']),
+                                      _patientData?['blood_type'], l10n),
                                   textPrimary: textPrimary,
                                   textSecondary: textSecondary),
                               _InfoRow(
-                                  label: 'Pathologie',
+                                  label: l10n.t('cardiac_pathology'),
                                   value: _getSafeString(
-                                      _patientData?['cardiac_pathology']),
+                                      _patientData?['cardiac_pathology'], l10n),
                                   textPrimary: textPrimary,
                                   textSecondary: textSecondary),
                               _InfoRow(
-                                  label: 'Poids',
+                                  label: l10n.t('weight'),
                                   value: '${_patientData?['weight'] ?? '?'} kg',
                                   textPrimary: textPrimary,
                                   textSecondary: textSecondary),
                               _InfoRow(
-                                  label: 'Taille',
+                                  label: l10n.t('height'),
                                   value: '${_patientData?['height'] ?? '?'} cm',
                                   textPrimary: textPrimary,
                                   textSecondary: textSecondary),
                               _InfoRow(
-                                  label: 'Antécédents',
+                                  label: l10n.t('history'),
                                   value: _getSafeString(
-                                      _patientData?['medical_history']),
+                                      _patientData?['medical_history'], l10n),
                                   textPrimary: textPrimary,
                                   textSecondary: textSecondary),
                               _InfoRow(
-                                  label: 'Allergies',
+                                  label: l10n.t('allergies'),
                                   value: _getSafeString(
-                                      _patientData?['allergies']),
+                                      _patientData?['allergies'], l10n),
                                   textPrimary: textPrimary,
                                   textSecondary: textSecondary)
                             ]),
                         const SizedBox(height: 12),
                         _SectionCard(
-                            title: 'Mon cardiologue',
+                            title: l10n.t('my_cardiologist'),
                             icon: Icons.medical_services_rounded,
                             color: ThemeHelper.primary,
                             surface: surface,
                             border: border,
                             children: [
                               _InfoRow(
-                                  label: 'Nom',
+                                  label: l10n.t('name'),
                                   value: _getSafeString(
-                                      _patientData?['cardiologist']),
+                                      _patientData?['cardiologist'], l10n),
                                   textPrimary: textPrimary,
                                   textSecondary: textSecondary),
                               _InfoRow(
-                                  label: 'Suivi',
-                                  value: 'Télésurveillance active',
+                                  label: l10n.t('active_telesurveillance'),
+                                  value: l10n.t('active_telesurveillance'),
                                   textPrimary: textPrimary,
                                   textSecondary: textSecondary),
                               _InfoRow(
-                                  label: 'Prochain RDV',
-                                  value: '15 avril 2026',
+                                  label: l10n.t('next_appointment'),
+                                  value: l10n.t('april_15_2026'),
                                   textPrimary: textPrimary,
                                   textSecondary: textSecondary)
                             ]),
                         const SizedBox(height: 12),
                         _MenuItemCard(
                             icon: Icons.notifications_outlined,
-                            title: 'Notifications',
-                            subtitle: 'Configurer les alertes',
+                            title: l10n.t('notifications'),
+                            subtitle: l10n.t('configure_alerts'),
                             onTap: () {
                               Navigator.push(
                                   context,
@@ -542,8 +553,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
                         const SizedBox(height: 12),
                         _MenuItemCard(
                             icon: Icons.settings_outlined,
-                            title: 'Paramètres',
-                            subtitle: 'Capteur, compte',
+                            title: l10n.t('settings_title'),
+                            subtitle: l10n.t('sensor_account'),
                             onTap: () {
                               Navigator.push(
                                   context,
@@ -573,7 +584,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                                           color: ThemeHelper.critical(context),
                                           size: 20),
                                       const SizedBox(width: 8),
-                                      Text('Déconnexion',
+                                      Text(l10n.t('logout'),
                                           style: TextStyle(
                                               fontSize: 16,
                                               fontWeight: FontWeight.w600,
@@ -639,8 +650,8 @@ class _MenuItemCard extends StatelessWidget {
                     Text(subtitle,
                         style: TextStyle(fontSize: 13, color: textSecondary))
                   ])),
-              const Icon(Icons.chevron_right_rounded,
-                  color: AppColors.textSecondary)
+              const Icon(Icons.arrow_forward_rounded,
+                  color: AppColors.textSecondary, size: 18)
             ])));
   }
 }
@@ -701,7 +712,7 @@ class _InfoRow extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Padding(
-        padding: const EdgeInsets.only(bottom: 10),
+        padding: const EdgeInsetsDirectional.only(bottom: 10),
         child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
           SizedBox(
               width: 110,

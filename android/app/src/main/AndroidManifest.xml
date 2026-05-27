@@ -1,21 +1,22 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:tools="http://schemas.android.com/tools">
-
+ 
     <!-- ✅ PERMISSIONS REQUISES POUR CAREDIFY -->
     
-    <!-- Internet (Supabase, API IA) -->
+    <!-- Internet (Supabase, API IA, Overpass OSM) -->
     <uses-permission android:name="android.permission.INTERNET"/>
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE"/>
+    <uses-permission android:name="android.permission.CHANGE_NETWORK_STATE"/>
     
     <!-- Localisation (GPS pour urgences et carte) -->
     <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION"/>
     <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION"/>
     <uses-permission android:name="android.permission.ACCESS_BACKGROUND_LOCATION"/>
-
-    <!-- ✅ Bluetooth BLE (Movesense ECG) — Android 6-11 -->
+ 
+    <!-- Bluetooth BLE (Movesense ECG) — Android 6-11 -->
     <uses-permission android:name="android.permission.BLUETOOTH"/>
     <uses-permission android:name="android.permission.BLUETOOTH_ADMIN"/>
-    <!-- ✅ Bluetooth BLE (Movesense ECG) — Android 12+ -->
+    <!-- Bluetooth BLE (Movesense ECG) — Android 12+ -->
     <uses-permission android:name="android.permission.BLUETOOTH_SCAN"
         android:usesPermissionFlags="neverForLocation"/>
     <uses-permission android:name="android.permission.BLUETOOTH_CONNECT"/>
@@ -50,18 +51,19 @@
         android:name="${applicationName}"
         android:icon="@mipmap/ic_launcher"
         android:roundIcon="@mipmap/ic_launcher_round"
-        android:usesCleartextTraffic="true"
+        android:usesCleartextTraffic="false"
+        android:networkSecurityConfig="@xml/network_security_config"
         android:requestLegacyExternalStorage="true"
         android:allowBackup="false"
         android:fullBackupContent="false"
         tools:replace="android:label">
         
-        <!-- ✅ META-DATA GOOGLE MAPS (si utilisé) -->
+        <!-- META-DATA GOOGLE MAPS -->
         <meta-data
             android:name="com.google.android.geo.API_KEY"
             android:value="${GOOGLE_MAPS_API_KEY}"/>
         
-        <!-- ✅ META-DATA NOTIFICATIONS -->
+        <!-- META-DATA NOTIFICATIONS -->
         <meta-data
             android:name="com.google.firebase.messaging.default_notification_icon"
             android:resource="@mipmap/ic_launcher"/>
@@ -69,7 +71,7 @@
             android:name="com.google.firebase.messaging.default_notification_color"
             android:resource="@color/colorPrimary"/>
         
-        <!-- ✅ ACTIVITÉ PRINCIPALE -->
+        <!-- ACTIVITÉ PRINCIPALE -->
         <activity
             android:name=".MainActivity"
             android:exported="true"
@@ -81,18 +83,16 @@
             android:windowSoftInputMode="adjustResize"
             android:screenOrientation="portrait">
             
-            <!-- Flutter Normal Theme -->
             <meta-data
               android:name="io.flutter.embedding.android.NormalTheme"
               android:resource="@style/NormalTheme"/>
             
-            <!-- ✅ INTENT FILTERS -->
             <intent-filter>
                 <action android:name="android.intent.action.MAIN"/>
                 <category android:name="android.intent.category.LAUNCHER"/>
             </intent-filter>
             
-            <!-- ✅ Deep Links pour notifications -->
+            <!-- Deep Links pour notifications -->
             <intent-filter>
                 <action android:name="android.intent.action.VIEW"/>
                 <category android:name="android.intent.category.DEFAULT"/>
@@ -101,7 +101,7 @@
             </intent-filter>
         </activity>
         
-        <!-- ✅ FOREGROUND SERVICE POUR MONITORING (CORRIGÉ) -->
+        <!-- FOREGROUND SERVICE POUR MONITORING -->
         <service
             android:name="com.pravera.flutter_foreground_task.service.ForegroundService"
             android:foregroundServiceType="health|location"
@@ -109,7 +109,7 @@
             android:stopWithTask="false"
             tools:ignore="ForegroundServicePermission"/>
         
-        <!-- ✅ RECEIVERS POUR NOTIFICATIONS -->
+        <!-- RECEIVERS POUR NOTIFICATIONS -->
         <receiver android:exported="false" android:name="com.dexterous.flutterlocalnotifications.ScheduledNotificationReceiver"/>
         <receiver android:exported="false" android:name="com.dexterous.flutterlocalnotifications.ScheduledNotificationBootReceiver">
             <intent-filter>
@@ -120,12 +120,12 @@
             </intent-filter>
         </receiver>
         
-        <!-- ✅ Flutter Embedding Meta-data -->
+        <!-- Flutter Embedding -->
         <meta-data
             android:name="flutterEmbedding"
             android:value="2"/>
         
-        <!-- ✅ FileProvider pour export PDF -->
+        <!-- FileProvider pour export PDF -->
         <provider
             android:name="androidx.core.content.FileProvider"
             android:authorities="${applicationId}.fileprovider"
@@ -138,27 +138,20 @@
         
     </application>
     
-    <!-- ✅ QUERIES POUR PACKAGE VISIBILITY (Android 11+) -->
+    <!-- QUERIES POUR PACKAGE VISIBILITY (Android 11+) -->
     <queries>
-        <!-- Text processing -->
         <intent>
             <action android:name="android.intent.action.PROCESS_TEXT"/>
             <data android:mimeType="text/plain"/>
         </intent>
-        
-        <!-- Phone calls -->
         <intent>
             <action android:name="android.intent.action.DIAL"/>
             <data android:scheme="tel"/>
         </intent>
-        
-        <!-- Maps/Location -->
         <intent>
             <action android:name="android.intent.action.VIEW"/>
             <data android:scheme="geo"/>
         </intent>
-        
-        <!-- Sharing/Export PDF -->
         <intent>
             <action android:name="android.intent.action.SEND"/>
             <data android:mimeType="application/pdf"/>

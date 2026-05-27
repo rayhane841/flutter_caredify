@@ -3,13 +3,17 @@ import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:intl/date_symbol_data_local.dart';
+import 'package:flutter_localizations/flutter_localizations.dart';
+import 'package:google_fonts/google_fonts.dart';
 
 // ✅ Providers
 import 'providers/app_provider.dart';
 import 'providers/theme_provider.dart';
+import 'providers/language_provider.dart';
 
-// ✅ Thème & Utils
+// ✅ Thème & l10n & Utils
 import 'theme/app_theme.dart';
+import 'l10n/app_localizations.dart';
 import 'utils/theme_helper.dart';
 
 // ✅ Screens
@@ -28,6 +32,9 @@ import 'screens/auth/sign_in_screen.dart';
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
+  final languageProvider = LanguageProvider();
+  await languageProvider.init();
+
   await Supabase.initialize(
     url: 'https://sjwehettourojokbuahr.supabase.co',
     anonKey: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InNqd2VoZXR0b3Vyb2pva2J1YWhyIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzU2NTcwNDksImV4cCI6MjA5MTIzMzA0OX0.VPEcRhTf_FwRVuYbP0uNA3pEe-VAPS-2DxQGyP9h5Sc',
@@ -36,14 +43,15 @@ void main() async {
   await initializeDateFormatting('fr_FR', null);
   SystemChrome.setPreferredOrientations([DeviceOrientation.portraitUp]);
 
-  runApp(const CaredifyApp());
+  runApp(CaredifyApp(languageProvider: languageProvider));
 }
 
 // ═══════════════════════════════════════════════════════════
 // WIDGET RACINE
 // ═══════════════════════════════════════════════════════════
 class CaredifyApp extends StatelessWidget {
-  const CaredifyApp({super.key});
+  final LanguageProvider languageProvider;
+  const CaredifyApp({super.key, required this.languageProvider});
 
   @override
   Widget build(BuildContext context) {
@@ -51,14 +59,35 @@ class CaredifyApp extends StatelessWidget {
       providers: [
         ChangeNotifierProvider(create: (_) => AppProvider()),
         ChangeNotifierProvider(create: (_) => ThemeProvider()),
+        ChangeNotifierProvider.value(value: languageProvider),
       ],
-      child: Consumer<ThemeProvider>(
-        builder: (context, themeProvider, child) {
+      child: Consumer2<ThemeProvider, LanguageProvider>(
+        builder: (context, themeProvider, langProvider, child) {
+          final isArabic = langProvider.currentLocale.languageCode == 'ar';
           return MaterialApp(
             title: 'CAREDIFY',
             debugShowCheckedModeBanner: false,
-            theme: AppTheme.light,
-            darkTheme: AppTheme.dark,
+            locale: langProvider.currentLocale,
+            supportedLocales: const [
+              Locale('fr'),
+              Locale('ar'),
+            ],
+            localizationsDelegates: const [
+              AppLocalizations.delegate,
+              GlobalMaterialLocalizations.delegate,
+              GlobalWidgetsLocalizations.delegate,
+              GlobalCupertinoLocalizations.delegate,
+            ],
+            theme: isArabic
+                ? AppTheme.light.copyWith(
+                    textTheme: GoogleFonts.cairoTextTheme(AppTheme.light.textTheme),
+                  )
+                : AppTheme.light,
+            darkTheme: isArabic
+                ? AppTheme.dark.copyWith(
+                    textTheme: GoogleFonts.cairoTextTheme(AppTheme.dark.textTheme),
+                  )
+                : AppTheme.dark,
             themeMode: themeProvider.isDarkMode ? ThemeMode.dark : ThemeMode.light,
             home: const SplashScreen(),
             routes: {
@@ -196,9 +225,9 @@ class _MainShellState extends State<MainShell> {
               onWillPop: () async {
                 // ✅ Empêcher le retour arrière vers SignIn
                 ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(
-                    content: Text('Utilisez le bouton Déconnexion dans Profil pour quitter'),
-                    duration: Duration(seconds: 2),
+                  SnackBar(
+                    content: Text(AppLocalizations.of(context).t('exit_warning_logout')),
+                    duration: const Duration(seconds: 2),
                   ),
                 );
                 return false; // ← Bloque le retour arrière
@@ -242,6 +271,7 @@ class _MainShellState extends State<MainShell> {
   }) {
     final hasAlert = app.emergencyState != EmergencyState.none;
     final hasUnreadMessages = app.aiAlertPending;
+    final localizations = AppLocalizations.of(context);
 
     return Container(
       decoration: BoxDecoration(
@@ -262,7 +292,7 @@ class _MainShellState extends State<MainShell> {
             children: [
               _NavItem(
                 icon: Icons.home_rounded,
-                label: 'Accueil',
+                label: localizations.t('home'),
                 selected: _currentIndex == 0,
                 onTap: () => setState(() => _currentIndex = 0),
                 textPrimary: textPri,
@@ -271,7 +301,7 @@ class _MainShellState extends State<MainShell> {
               ),
               _NavItem(
                 icon: Icons.show_chart_rounded,
-                label: 'ECG',
+                label: localizations.t('ecg'),
                 selected: _currentIndex == 1,
                 onTap: () => setState(() => _currentIndex = 1),
                 textPrimary: textPri,
@@ -342,7 +372,7 @@ class _MainShellState extends State<MainShell> {
               ),
               _NavItem(
                 icon: Icons.map_rounded,
-                label: 'Carte',
+                label: localizations.t('map'),
                 selected: _currentIndex == 3,
                 onTap: () => setState(() => _currentIndex = 3),
                 textPrimary: textPri,
@@ -351,7 +381,7 @@ class _MainShellState extends State<MainShell> {
               ),
               _NavItem(
                 icon: Icons.person_rounded,
-                label: 'Profil',
+                label: localizations.t('profile'),
                 selected: _currentIndex == 4,
                 onTap: () => setState(() => _currentIndex = 4),
                 textPrimary: textPri,

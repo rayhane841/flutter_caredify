@@ -21,6 +21,7 @@ import 'package:flutter_test/flutter_test.dart';
 // Importe TON application principale (CaredifyApp)
 // C'est comme dire : "Je veux tester l'app qui est dans le fichier main.dart"
 import 'package:caredify/main.dart';
+import 'package:caredify/providers/language_provider.dart';
 
 // ============================================================================
 //  PARTIE 2 : POINT D'ENTRÉE DU TEST
@@ -42,7 +43,8 @@ void main() {
     //  tester.pumpWidget() = afficher un widget dans un environnement de test virtuel
     // CaredifyApp() = c'est TON application qu'on lance (la même que dans main.dart)
     // Résultat : l'app est "ouverte" dans le test, comme si tu la lançais sur ton téléphone
-    await tester.pumpWidget(const CaredifyApp());
+    final languageProvider = LanguageProvider();
+    await tester.pumpWidget(CaredifyApp(languageProvider: languageProvider));
 
     // -------------------------------------------------------------------------
     // 🔍 ÉTAPE 2 : VÉRIFIER QUE LE COMPTEUR COMMENCE À 0

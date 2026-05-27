@@ -4,10 +4,13 @@ import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
 import 'package:printing/printing.dart';
 import 'package:intl/intl.dart';
-import 'package:geolocator/geolocator.dart'; // ← NOUVEL IMPORT
+import 'package:geolocator/geolocator.dart';
 import '../theme/app_theme.dart';
 import '../providers/theme_provider.dart';
 import '../providers/app_provider.dart';
+import '../providers/language_provider.dart';
+import '../l10n/app_localizations.dart';
+import '../utils/theme_helper.dart';
 import '../models/ecg_reading.dart';
 
 class SettingsScreen extends StatefulWidget {
@@ -21,14 +24,13 @@ class _SettingsScreenState extends State<SettingsScreen> {
   bool _notificationsEnabled = true;
   bool _ecgAutoRecord = false;
   bool _shareDataCardiologist = true;
-  bool _locationEnabled = true; // ← État local synchronisé avec AppProvider
+  bool _locationEnabled = true;
   String _measureInterval = '1h';
   double _alertThreshold = 65;
 
   @override
   void initState() {
     super.initState();
-    // ✅ Synchroniser l'état local avec AppProvider au démarrage
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (mounted) {
         final app = Provider.of<AppProvider>(context, listen: false);
@@ -39,105 +41,180 @@ class _SettingsScreenState extends State<SettingsScreen> {
     });
   }
 
-  // ✅ Helper : retourne la couleur appropriée selon le thème actif
   Color _getColor(Color light, Color dark) {
     return Theme.of(context).brightness == Brightness.dark ? dark : light;
   }
 
-  // ✅✅✅ MÉTHODE : Gérer le toggle de localisation ✅✅✅
+  // ── Toggle localisation ───────────────────────────────────────────────────
   Future<void> _toggleLocation(bool value) async {
     final app = Provider.of<AppProvider>(context, listen: false);
+    final l10n = AppLocalizations.of(context);
 
     if (value) {
-      // ✅ L'utilisateur veut ACTIVER la localisation
       try {
-        // 1. Vérifier si les services de localisation sont activés
         bool serviceEnabled = await Geolocator.isLocationServiceEnabled();
         if (!serviceEnabled) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text('❌ Les services de localisation sont désactivés'),
-              backgroundColor: Colors.orange,
-              duration: Duration(seconds: 3),
-            ),
-          );
-          // Revenir à l'état précédent
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: Text(l10n.t('gps_disabled_error')),
+                backgroundColor: Colors.orange,
+                duration: const Duration(seconds: 3),
+              ),
+            );
+          }
           setState(() => _locationEnabled = false);
           return;
         }
 
-        // 2. Vérifier les permissions
         LocationPermission permission = await Geolocator.checkPermission();
 
         if (permission == LocationPermission.denied) {
-          // Demander la permission
           permission = await Geolocator.requestPermission();
           if (permission == LocationPermission.denied) {
-            ScaffoldMessenger.of(context).showSnackBar(
-              const SnackBar(
-                content: Text('❌ Permission de localisation refusée'),
-                backgroundColor: Colors.red,
-                duration: Duration(seconds: 3),
-              ),
-            );
+            if (mounted) {
+              ScaffoldMessenger.of(context).showSnackBar(
+                SnackBar(
+                  content: Text(l10n.t('gps_permission_denied')),
+                  backgroundColor: Colors.red,
+                  duration: const Duration(seconds: 3),
+                ),
+              );
+            }
             setState(() => _locationEnabled = false);
             return;
           }
         }
 
         if (permission == LocationPermission.deniedForever) {
-          // Permission refusée définitivement → guider vers les paramètres
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text(
-                  '⚠️ Permission refusée définitivement. Activez-la dans Paramètres > Applications.'),
-              backgroundColor: Colors.orange,
-              duration: Duration(seconds: 4),
-            ),
-          );
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: Text(l10n.t('gps_permission_forever')),
+                backgroundColor: Colors.orange,
+                duration: const Duration(seconds: 4),
+              ),
+            );
+          }
           setState(() => _locationEnabled = false);
           return;
         }
 
-        // 3. Permission accordée → activer dans AppProvider
         await app.enableLocation(true);
-        setState(() => _locationEnabled = true);
-
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('✅ Localisation activée'),
-            backgroundColor: Colors.green,
-            duration: Duration(seconds: 2),
-          ),
-        );
+        if (mounted) {
+          setState(() => _locationEnabled = true);
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(l10n.t('location_enabled')),
+              backgroundColor: Colors.green,
+              duration: const Duration(seconds: 2),
+            ),
+          );
+        }
       } catch (e) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('❌ Erreur : $e'),
-            backgroundColor: Colors.red,
-            duration: const Duration(seconds: 3),
-          ),
-        );
-        setState(() => _locationEnabled = false);
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('${l10n.t('error_prefix')}$e'),
+              backgroundColor: Colors.red,
+              duration: const Duration(seconds: 3),
+            ),
+          );
+          setState(() => _locationEnabled = false);
+        }
       }
     } else {
-      // ✅ L'utilisateur veut DÉSACTIVER la localisation
+      // ── L'utilisateur désactive la localisation ──────────────────────
       await app.enableLocation(false);
-      setState(() => _locationEnabled = false);
-
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('📍 Localisation désactivée'),
-          backgroundColor: Colors.grey,
-          duration: Duration(seconds: 2),
-        ),
-      );
+      if (mounted) {
+        setState(() => _locationEnabled = false);
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(l10n.t('location_disabled')),
+            backgroundColor: Colors.grey,
+            duration: const Duration(seconds: 2),
+          ),
+        );
+      }
     }
   }
 
+  Widget _buildLanguageCard({
+    required BuildContext context,
+    required String langCode,
+    required String label,
+    required String flag,
+    required bool isSelected,
+  }) {
+    final surface = ThemeHelper.surface(context);
+    final border = isSelected ? ThemeHelper.primary : ThemeHelper.border(context);
+    final textPrimary = ThemeHelper.textPrimary(context);
+
+    return GestureDetector(
+      onTap: () {
+        context.read<LanguageProvider>().setLanguage(langCode);
+      },
+      child: Container(
+        padding: const EdgeInsets.symmetric(vertical: 14, horizontal: 12),
+        decoration: BoxDecoration(
+          color: isSelected ? ThemeHelper.primary.withOpacity(0.08) : surface,
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(
+            color: border,
+            width: isSelected ? 2.0 : 1.0,
+          ),
+        ),
+        child: Stack(
+          children: [
+            Center(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(
+                    flag,
+                    style: const TextStyle(fontSize: 24),
+                  ),
+                  const SizedBox(height: 6),
+                  Text(
+                    label,
+                    style: TextStyle(
+                      fontSize: 14,
+                      fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
+                      color: textPrimary,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            if (isSelected)
+              Positioned(
+                top: 0,
+                right: 0,
+                child: Container(
+                  padding: const EdgeInsets.all(2),
+                  decoration: BoxDecoration(
+                    color: ThemeHelper.primary,
+                    shape: BoxShape.circle,
+                  ),
+                  child: const Icon(
+                    Icons.check,
+                    color: Colors.white,
+                    size: 10,
+                  ),
+                ),
+              ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  // ─────────────────────────────────────────────────────────────────────────
   @override
   Widget build(BuildContext context) {
-    // ✅ Récupération dynamique des couleurs
+    final l10n = AppLocalizations.of(context);
+    final isAr = l10n.isArabic;
+
     final background =
         _getColor(AppColors.background, AppColors.darkBackground);
     final surface = _getColor(AppColors.surface, AppColors.darkSurface);
@@ -148,7 +225,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
         _getColor(AppColors.textPrimary, AppColors.darkTextPrimary);
     final textSecondary =
         _getColor(AppColors.textSecondary, AppColors.darkTextSecondary);
-    final textHint = _getColor(AppColors.textHint, AppColors.darkTextHint);
     const primary = AppColors.primary;
     final warning = _getColor(AppColors.warning, AppColors.darkWarning);
     final normal = _getColor(AppColors.normal, AppColors.darkNormal);
@@ -157,7 +233,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
     return Scaffold(
       backgroundColor: background,
       appBar: AppBar(
-        title: const Text('Paramètres'),
+        title: Text(l10n.t('settings_title')),
         backgroundColor: surface,
         foregroundColor: textPrimary,
         elevation: 0,
@@ -186,7 +262,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                     const SizedBox(width: 10),
                     Expanded(
                       child: Text(
-                        'CAREDIFY v1.0.0 — Prototype académique\nMode simulé, aucune donnée réelle transmise',
+                        l10n.t('app_version_academic_prototype'),
                         style: TextStyle(
                             fontSize: 13, color: primary, height: 1.4),
                       ),
@@ -196,19 +272,55 @@ class _SettingsScreenState extends State<SettingsScreen> {
               ),
               const SizedBox(height: 20),
 
+              // Section Langue / Language
               _SettingsSection(
-                title: 'Surveillance',
+                title: l10n.t('language'),
+                icon: Icons.language_rounded,
+                color: primary,
+                children: [
+                  Padding(
+                    padding: const EdgeInsets.all(12),
+                    child: Row(
+                      children: [
+                        Expanded(
+                          child: _buildLanguageCard(
+                            context: context,
+                            langCode: 'fr',
+                            label: l10n.t('french'),
+                            flag: '🇫🇷',
+                            isSelected: !isAr,
+                          ),
+                        ),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: _buildLanguageCard(
+                            context: context,
+                            langCode: 'ar',
+                            label: l10n.t('arabic'),
+                            flag: '🇸🇦',
+                            isSelected: isAr,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 16),
+
+              _SettingsSection(
+                title: l10n.t('monitoring'),
                 icon: Icons.monitor_heart_rounded,
                 color: primary,
                 children: [
                   _ToggleTile(
-                    title: 'ECG automatique',
-                    subtitle: 'Enregistrement périodique automatique',
+                    title: l10n.t('ecg_auto'),
+                    subtitle: l10n.t('ecg_auto_subtitle'),
                     value: _ecgAutoRecord,
                     onChanged: (v) => setState(() => _ecgAutoRecord = v),
                   ),
                   _DropdownTile(
-                    title: 'Fréquence de mesure',
+                    title: l10n.t('measure_frequency'),
                     value: _measureInterval,
                     options: const {
                       '30min': '30 minutes',
@@ -219,8 +331,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
                     onChanged: (v) => setState(() => _measureInterval = v!),
                   ),
                   _SliderTile(
-                    title: 'Seuil d\'alerte IA',
-                    subtitle: 'Score de risque déclenchant l\'alerte',
+                    title: l10n.t('ia_alert_threshold'),
+                    subtitle: l10n.t('ia_alert_threshold_subtitle'),
                     value: _alertThreshold,
                     min: 40,
                     max: 90,
@@ -232,13 +344,13 @@ class _SettingsScreenState extends State<SettingsScreen> {
               const SizedBox(height: 16),
 
               _SettingsSection(
-                title: 'Notifications',
+                title: l10n.t('notifications'),
                 icon: Icons.notifications_rounded,
                 color: warning,
                 children: [
                   _ToggleTile(
-                    title: 'Notifications activées',
-                    subtitle: 'Alertes et résultats ECG',
+                    title: l10n.t('notifications'),
+                    subtitle: l10n.t('notifications'),
                     value: _notificationsEnabled,
                     onChanged: (v) => setState(() => _notificationsEnabled = v),
                   ),
@@ -247,36 +359,38 @@ class _SettingsScreenState extends State<SettingsScreen> {
               const SizedBox(height: 16),
 
               _SettingsSection(
-                title: 'Confidentialité',
+                title: l10n.t('confidentiality'),
                 icon: Icons.lock_rounded,
                 color: normal,
                 children: [
                   _ToggleTile(
-                    title: 'Partager avec cardiologue',
-                    subtitle: 'Données ECG transmises au Dr. Lefebvre',
+                    title: l10n.t('share_with_cardiologist'),
+                    subtitle: l10n.t('share_with_cardiologist_subtitle'),
                     value: _shareDataCardiologist,
                     onChanged: (v) =>
                         setState(() => _shareDataCardiologist = v),
                   ),
-                  // ✅✅✅ TOGGLE LOCALISATION GPS FONCTIONNEL ✅✅✅
+                  // ── Toggle GPS — désactiver ici bloque la carte ─────────
                   _ToggleTile(
-                    title: 'Localisation GPS',
-                    subtitle: 'Pour les urgences et la carte',
+                    title: l10n.t('gps_location'),
+                    subtitle: _locationEnabled
+                        ? l10n.t('gps_location_subtitle_enabled')
+                        : l10n.t('gps_location_subtitle_disabled'),
                     value: _locationEnabled,
-                    onChanged: _toggleLocation, // ← Appel de la méthode async
+                    onChanged: _toggleLocation,
                   ),
                 ],
               ),
               const SizedBox(height: 16),
 
               _SettingsSection(
-                title: 'Apparence',
+                title: l10n.t('appearance'),
                 icon: Icons.palette_rounded,
                 color: const Color(0xFF6A1B9A),
                 children: [
                   _ToggleTile(
-                    title: 'Mode sombre',
-                    subtitle: 'Thème sombre de l\'application',
+                    title: l10n.t('dark_theme'),
+                    subtitle: l10n.t('dark_theme_subtitle'),
                     value: Provider.of<ThemeProvider>(context).isDarkMode,
                     onChanged: (v) {
                       Provider.of<ThemeProvider>(context, listen: false)
@@ -288,32 +402,32 @@ class _SettingsScreenState extends State<SettingsScreen> {
               const SizedBox(height: 16),
 
               _SettingsSection(
-                title: 'Données',
+                title: l10n.t('data'),
                 icon: Icons.storage_rounded,
                 color: textSecondary,
                 children: [
                   _ActionTile(
-                    title: 'Exporter l\'historique',
-                    subtitle: 'Télécharger toutes les mesures en PDF',
+                    title: l10n.t('export_history'),
+                    subtitle: l10n.t('export_history_subtitle'),
                     icon: Icons.download_rounded,
                     color: primary,
                     onTap: () => _exportHistory(context),
                   ),
                   _ActionTile(
-                    title: 'Partager avec médecin',
-                    subtitle: 'Envoyer un rapport par email',
+                    title: l10n.t('share_with_doctor'),
+                    subtitle: l10n.t('share_with_doctor_subtitle'),
                     icon: Icons.share_rounded,
                     color: primary,
                     onTap: () {
                       ScaffoldMessenger.of(context).showSnackBar(
-                        const SnackBar(
-                            content: Text('Fonctionnalité à implémenter')),
+                        SnackBar(
+                            content: Text(l10n.t('feature_to_implement'))),
                       );
                     },
                   ),
                   _ActionTile(
-                    title: 'Effacer l\'historique',
-                    subtitle: 'Supprimer toutes les mesures locales',
+                    title: l10n.t('clear_history'),
+                    subtitle: l10n.t('clear_history_subtitle'),
                     icon: Icons.delete_rounded,
                     color: critical,
                     onTap: () => _confirmDelete(context),
@@ -328,35 +442,36 @@ class _SettingsScreenState extends State<SettingsScreen> {
     );
   }
 
-  // ✅✅✅ MÉTHODE : Exporter l'historique en PDF ✅✅✅
+  // ── Export PDF ────────────────────────────────────────────────────────────
   Future<void> _exportHistory(BuildContext context) async {
     final app = Provider.of<AppProvider>(context, listen: false);
     final history = app.history;
+    final l10n = AppLocalizations.of(context);
 
     if (history.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('⚠️ Aucun enregistrement à exporter'),
-          backgroundColor: Color.fromARGB(255, 238, 162, 20),
-          duration: Duration(seconds: 2),
+        SnackBar(
+          content: Text(l10n.t('no_records_to_export')),
+          backgroundColor: const Color.fromARGB(255, 238, 162, 20),
+          duration: const Duration(seconds: 2),
         ),
       );
       return;
     }
 
     ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(
+      SnackBar(
         content: Row(
           children: [
-            SizedBox(
+            const SizedBox(
                 width: 20,
                 height: 20,
                 child: CircularProgressIndicator(strokeWidth: 2)),
-            SizedBox(width: 12),
-            Text('Génération du PDF...'),
+            const SizedBox(width: 12),
+            Text(l10n.t('generating_pdf')),
           ],
         ),
-        duration: Duration(seconds: 3),
+        duration: const Duration(seconds: 3),
         backgroundColor: Colors.blue,
       ),
     );
@@ -395,30 +510,30 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   ),
                 ),
                 pw.Divider(),
-                pw.Text('Patient : ${app.profile.name}',
+                pw.Text('${l10n.t('patient')} : ${app.profile.name}',
                     style: const pw.TextStyle(fontSize: 12)),
-                pw.Text('ID Patient : ${app.profile.patientId}',
+                pw.Text('${l10n.t('patient_id')} : ${app.profile.patientId}',
                     style: const pw.TextStyle(fontSize: 12)),
                 pw.Text(
-                    'Généré le : ${DateFormat('dd/MM/yyyy HH:mm').format(DateTime.now())}',
+                    '${l10n.t('generated_on')} : ${DateFormat('dd/MM/yyyy HH:mm').format(DateTime.now())}',
                     style: const pw.TextStyle(fontSize: 10)),
                 pw.SizedBox(height: 20),
-                pw.Header(level: 1, child: pw.Text('Récapitulatif')),
+                pw.Header(level: 1, child: pw.Text(l10n.t('summary'))),
                 pw.TableHelper.fromTextArray(
-                  headers: ['Statut', 'Nombre', 'Pourcentage'],
+                  headers: [l10n.t('status'), l10n.t('count'), l10n.t('percentage')],
                   data: [
                     [
-                      '✅ Normal',
+                      '✅ ${l10n.t('yes')}',
                       '$normalCount',
                       '${((normalCount / history.length) * 100).toInt()}%'
                     ],
                     [
-                      '⚠️ Suspect',
+                      '⚠️ ${l10n.t('optional')}',
                       '$suspectCount',
                       '${((suspectCount / history.length) * 100).toInt()}%'
                     ],
                     [
-                      '❌ Critique',
+                      '❌ ${l10n.t('error')}',
                       '$criticalCount',
                       '${((criticalCount / history.length) * 100).toInt()}%'
                     ],
@@ -432,12 +547,12 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   },
                 ),
                 pw.SizedBox(height: 10),
-                pw.Text('Moyenne BPM : $avgBpm',
+                pw.Text('${l10n.t('average_bpm')} : $avgBpm',
                     style: pw.TextStyle(
                         fontSize: 11, fontStyle: pw.FontStyle.italic)),
                 pw.SizedBox(height: 20),
                 pw.Header(
-                    level: 1, child: pw.Text('Détail des enregistrements')),
+                    level: 1, child: pw.Text(l10n.t('readings_detail'))),
                 ...history.take(50).map((reading) => pw.Padding(
                       padding: const pw.EdgeInsets.only(bottom: 8),
                       child: pw.Column(
@@ -462,17 +577,10 @@ class _SettingsScreenState extends State<SettingsScreen> {
                           ),
                           pw.SizedBox(height: 4),
                           pw.Text(
-                              '📊 Statut: ${_getStatusText(reading.status)}',
+                              '📊 ${l10n.t('status')}: ${_getStatusText(reading.status, l10n)}',
                               style: pw.TextStyle(
-                                fontSize: 10,
-                                color: _getStatusColor(reading.status) ==
-                                        HealthStatus.normal
-                                    ? PdfColors.green
-                                    : _getStatusColor(reading.status) ==
-                                            HealthStatus.suspect
-                                        ? PdfColors.orange
-                                        : PdfColors.red,
-                              )),
+                                  fontSize: 10,
+                                  color: _getPdfStatusColor(reading.status))),
                           pw.Divider(),
                         ],
                       ),
@@ -480,7 +588,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 pw.SizedBox(height: 20),
                 pw.Center(
                   child: pw.Text(
-                    'Document généré par CAREDIFY — Prototype académique\nAucune valeur diagnostique',
+                    l10n.t('academic_prototype_disclaimer'),
                     style:
                         const pw.TextStyle(fontSize: 8, color: PdfColors.grey),
                     textAlign: pw.TextAlign.center,
@@ -500,10 +608,10 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('✅ PDF généré avec succès !'),
-            backgroundColor: Color.fromARGB(255, 81, 196, 85),
-            duration: Duration(seconds: 2),
+          SnackBar(
+            content: Text(l10n.t('pdf_generated_success')),
+            backgroundColor: const Color.fromARGB(255, 81, 196, 85),
+            duration: const Duration(seconds: 2),
           ),
         );
       }
@@ -511,7 +619,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('❌ Erreur lors de l\'export : $e'),
+            content: Text('${l10n.t('export_error')}$e'),
             backgroundColor: Colors.red,
             duration: const Duration(seconds: 3),
           ),
@@ -520,20 +628,18 @@ class _SettingsScreenState extends State<SettingsScreen> {
     }
   }
 
-  // ✅ Helper pour le statut texte
-  String _getStatusText(HealthStatus status) {
+  String _getStatusText(HealthStatus status, AppLocalizations l10n) {
     switch (status) {
       case HealthStatus.normal:
-        return 'Normal';
+        return l10n.t('yes');
       case HealthStatus.suspect:
-        return 'Suspect';
+        return l10n.t('optional');
       case HealthStatus.critical:
-        return 'Critique';
+        return l10n.t('error');
     }
   }
 
-  // ✅ Helper pour la couleur du statut (pour PDF)
-  PdfColor _getStatusColor(HealthStatus status) {
+  PdfColor _getPdfStatusColor(HealthStatus status) {
     switch (status) {
       case HealthStatus.normal:
         return PdfColors.green;
@@ -544,8 +650,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
     }
   }
 
-  // ✅✅✅ MÉTHODE : Effacer l'historique via AppProvider ✅✅✅
+  // ── Effacer l'historique ──────────────────────────────────────────────────
   void _confirmDelete(BuildContext context) {
+    final l10n = AppLocalizations.of(context);
     final background = _getColor(AppColors.surface, AppColors.darkSurface);
     final textPrimary =
         _getColor(AppColors.textPrimary, AppColors.darkTextPrimary);
@@ -557,20 +664,20 @@ class _SettingsScreenState extends State<SettingsScreen> {
     final wasEmpty = app.history.isEmpty;
     final count = app.history.length;
     final contentMessage = wasEmpty
-        ? 'L\'historique est déjà vide. Aucune action nécessaire.'
-        : 'Cette action est irréversible. Toutes les $count mesures seront supprimées définitivement.';
+        ? l10n.t('history_already_empty')
+        : l10n.t('confirm_delete_content').replaceAll('{count}', '$count');
 
     showDialog(
       context: context,
       builder: (ctx) => AlertDialog(
         backgroundColor: background,
         title:
-            Text('Effacer l\'historique', style: TextStyle(color: textPrimary)),
+            Text(l10n.t('clear_history'), style: TextStyle(color: textPrimary)),
         content: Text(contentMessage, style: TextStyle(color: textSecondary)),
         actions: [
           TextButton(
               onPressed: () => Navigator.pop(ctx),
-              child: Text('Annuler', style: TextStyle(color: textPrimary))),
+              child: Text(l10n.t('cancel'), style: TextStyle(color: textPrimary))),
           TextButton(
             onPressed: () {
               app.clearAllHistory();
@@ -578,15 +685,15 @@ class _SettingsScreenState extends State<SettingsScreen> {
               ScaffoldMessenger.of(context).showSnackBar(
                 SnackBar(
                   content: Text(wasEmpty
-                      ? 'ℹ️ Historique déjà vide'
-                      : '✅ $count enregistrement(s) supprimé(s)'),
+                      ? l10n.t('history_deleted_empty')
+                      : '$count ${l10n.t('records_deleted')}'),
                   backgroundColor: wasEmpty ? Colors.grey : Colors.green,
                   duration: const Duration(seconds: 2),
                 ),
               );
             },
             style: TextButton.styleFrom(foregroundColor: critical),
-            child: const Text('Effacer'),
+            child: Text(l10n.t('delete')),
           ),
         ],
       ),
@@ -595,7 +702,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
 }
 
 // ─────────────────────────────────────────────────────────────
-// WIDGETS INTERNES (inchangés)
+// WIDGETS INTERNES
 // ─────────────────────────────────────────────────────────────
 
 class _SettingsSection extends StatelessWidget {
@@ -648,7 +755,7 @@ class _ToggleTile extends StatelessWidget {
   final String title;
   final String subtitle;
   final bool value;
-  final ValueChanged<bool>? onChanged; // ← Nullable pour gérer async
+  final ValueChanged<bool>? onChanged;
   const _ToggleTile(
       {required this.title,
       required this.subtitle,

@@ -6,6 +6,7 @@ import '../../services/auth_service.dart';
 import '../../providers/app_provider.dart';
 import '../../theme/app_theme.dart';
 import '../../utils/theme_helper.dart';
+import '../../l10n/app_localizations.dart';
 
 class SignUpScreen extends StatefulWidget {
   const SignUpScreen({super.key});
@@ -19,7 +20,6 @@ class _SignUpScreenState extends State<SignUpScreen> {
   final _authService = AuthService();
   int _currentStep = 0;
 
-  // Étape 1 - Controllers
   final _firstNameController = TextEditingController();
   final _lastNameController = TextEditingController();
   final _emailController = TextEditingController();
@@ -30,24 +30,21 @@ class _SignUpScreenState extends State<SignUpScreen> {
   bool _obscurePassword = true;
   bool _obscureConfirmPassword = true;
 
-  // Étape 2 - Controllers + Cardiologue
   String? _bloodType;
   String? _cardiacPathology;
-  String? _selectedCardiologistId; // ← ID du cardiologue sélectionné
-  String? _selectedCardiologistLabel; // ← Label affiché dans le dropdown
-  List<Map<String, dynamic>> _cardiologists = []; // ← Liste des cardiologues
-  bool _isLoadingCardiologists = false; // ← État de chargement
+  String? _selectedCardiologistId;
+  String? _selectedCardiologistLabel;
+  List<Map<String, dynamic>> _cardiologists = [];
+  bool _isLoadingCardiologists = false;
   final _weightController = TextEditingController(text: '70');
   final _heightController = TextEditingController(text: '170');
   final _medicalHistoryController = TextEditingController();
   final _allergiesController = TextEditingController();
 
-  // Étape 3 - Variables
   bool? _hadInfarctus;
   bool? _hadRhythmDisorder;
   bool? _hadHospitalization;
 
-  // Étape 4 - Checkboxes
   bool _consentDataTreatment = false;
   bool _consentShareCardiologist = false;
   bool _consentResearch = false;
@@ -57,7 +54,7 @@ class _SignUpScreenState extends State<SignUpScreen> {
   @override
   void initState() {
     super.initState();
-    _loadCardiologists(); // ← Charger la liste au démarrage
+    _loadCardiologists();
   }
 
   @override
@@ -77,7 +74,6 @@ class _SignUpScreenState extends State<SignUpScreen> {
     super.dispose();
   }
 
-  // ✅ Charger la liste des cardiologues depuis Supabase
   Future<void> _loadCardiologists() async {
     setState(() => _isLoadingCardiologists = true);
     try {
@@ -89,14 +85,11 @@ class _SignUpScreenState extends State<SignUpScreen> {
         });
       }
     } catch (e) {
-      print('❌ Error loading cardiologists: $e');
-      if (mounted) {
-        setState(() => _isLoadingCardiologists = false);
-      }
+      debugPrint('❌ Error loading cardiologists: $e');
+      if (mounted) setState(() => _isLoadingCardiologists = false);
     }
   }
 
-  // ✅ Validation du mot de passe côté client
   bool _validatePassword(String password) {
     if (password.isEmpty) return false;
     bool hasLower = false,
@@ -106,9 +99,9 @@ class _SignUpScreenState extends State<SignUpScreen> {
     const specialChars = '!@#\$%^&*()_+-=[]{};:\'"|<>,.?/`~';
     for (int i = 0; i < password.length; i++) {
       final char = password[i];
-      if (char.compareTo('a') >= 0 && char.compareTo('z') <= 0) {
+      if (char.compareTo('a') >= 0 && char.compareTo('z') <= 0)
         hasLower = true;
-      } else if (char.compareTo('A') >= 0 && char.compareTo('Z') <= 0)
+      else if (char.compareTo('A') >= 0 && char.compareTo('Z') <= 0)
         hasUpper = true;
       else if (char.compareTo('0') >= 0 && char.compareTo('9') <= 0)
         hasDigit = true;
@@ -117,16 +110,17 @@ class _SignUpScreenState extends State<SignUpScreen> {
     return hasLower && hasUpper && hasDigit && hasSpecial;
   }
 
-  String? _validatePhone(String? value) {
-    if (value == null || value.isEmpty) return 'Numéro requis';
+  String? _validatePhone(String? value, AppLocalizations l10n) {
+    if (value == null || value.isEmpty) return l10n.t('required');
     final cleanValue = value.replaceAll(RegExp(r'[\s-]'), '');
     if (!RegExp(r'^[0-9]{8}$').hasMatch(cleanValue)) {
-      return 'Numéro invalide (8 chiffres requis)';
+      return l10n.t('invalid_phone_error');
     }
     return null;
   }
 
   void _nextStep() {
+    final l10n = AppLocalizations.of(context);
     if (_currentStep < 3) {
       if (_currentStep == 0) {
         if (_firstNameController.text.isEmpty ||
@@ -136,19 +130,19 @@ class _SignUpScreenState extends State<SignUpScreen> {
             _dobController.text.isEmpty ||
             _passwordController.text.isEmpty ||
             _confirmPasswordController.text.isEmpty) {
-          ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-              content: Text('Veuillez remplir tous les champs obligatoires'),
+          ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+              content: Text(l10n.t('required_fields_error')),
               backgroundColor: Colors.red));
           return;
         }
         if (!_emailController.text.contains('@') ||
             !_emailController.text.contains('.')) {
-          ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-              content: Text('Email invalide - doit contenir @ et .'),
+          ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+              content: Text(l10n.t('email_invalid')),
               backgroundColor: Colors.red));
           return;
         }
-        final String? phoneError = _validatePhone(_phoneController.text);
+        final String? phoneError = _validatePhone(_phoneController.text, l10n);
         if (phoneError != null) {
           ScaffoldMessenger.of(context).showSnackBar(
               SnackBar(content: Text(phoneError), backgroundColor: Colors.red));
@@ -156,24 +150,23 @@ class _SignUpScreenState extends State<SignUpScreen> {
         }
         final dateRegex = RegExp(r'^\d{2}/\d{2}/\d{4}$');
         if (!dateRegex.hasMatch(_dobController.text)) {
-          ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-              content: Text('Date invalide - format jj/mm/aaaa requis'),
+          ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+              content: Text(
+                  '${l10n.t('birth_date')} ${l10n.t('error')}: jj/mm/aaaa'),
               backgroundColor: Colors.red));
           return;
         }
         if (_passwordController.text != _confirmPasswordController.text) {
-          ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-              content: Text('Les mots de passe ne correspondent pas'),
+          ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+              content: Text(l10n.t('passwords_dont_match')),
               backgroundColor: Colors.red));
           return;
         }
-        final password = _passwordController.text.trim();
-        if (!_validatePassword(password)) {
-          ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-              content: Text(
-                  'Mot de passe invalide : il doit contenir au moins 1 minuscule, 1 majuscule, 1 chiffre et 1 symbole spécial (!@#\$%^&*...)'),
+        if (!_validatePassword(_passwordController.text.trim())) {
+          ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+              content: Text(l10n.t('password_invalid_error')),
               backgroundColor: Colors.red,
-              duration: Duration(seconds: 6)));
+              duration: const Duration(seconds: 6)));
           return;
         }
       }
@@ -196,6 +189,7 @@ class _SignUpScreenState extends State<SignUpScreen> {
   }
 
   Future<void> _showDatePickerDialog() async {
+    final l10n = AppLocalizations.of(context);
     int selectedDay = 1, selectedMonth = 1, selectedYear = 1990;
     final textPrimary = ThemeHelper.textPrimary(context);
     await showDialog(
@@ -205,53 +199,51 @@ class _SignUpScreenState extends State<SignUpScreen> {
           final surface = ThemeHelper.surface(context);
           return AlertDialog(
             backgroundColor: surface,
-            title: Text('Date de naissance',
+            title: Text(l10n.t('birth_date'),
                 textAlign: TextAlign.center,
                 style: TextStyle(color: textPrimary)),
             content: SizedBox(
               width: double.maxFinite,
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-                      children: [
-                        _buildDatePickerColumn(
-                            label: 'Jour',
-                            values: List.generate(31, (i) => i + 1),
-                            selected: selectedDay,
-                            onSelected: (value) =>
-                                setDialogState(() => selectedDay = value),
-                            textPrimary: textPrimary),
-                        _buildDatePickerColumn(
-                            label: 'Mois',
-                            values: List.generate(12, (i) => i + 1),
-                            selected: selectedMonth,
-                            onSelected: (value) =>
-                                setDialogState(() => selectedMonth = value),
-                            textPrimary: textPrimary),
-                        _buildDatePickerColumn(
-                            label: 'Année',
-                            values: List.generate(89, (i) => 2008 - i),
-                            selected: selectedYear,
-                            onSelected: (value) =>
-                                setDialogState(() => selectedYear = value),
-                            textPrimary: textPrimary),
-                      ]),
-                ],
-              ),
+              child: Column(mainAxisSize: MainAxisSize.min, children: [
+                Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                    children: [
+                      _buildDatePickerColumn(
+                          label: l10n.t('day'),
+                          values: List.generate(31, (i) => i + 1),
+                          selected: selectedDay,
+                          onSelected: (v) =>
+                              setDialogState(() => selectedDay = v),
+                          textPrimary: textPrimary),
+                      _buildDatePickerColumn(
+                          label: l10n.t('month'),
+                          values: List.generate(12, (i) => i + 1),
+                          selected: selectedMonth,
+                          onSelected: (v) =>
+                              setDialogState(() => selectedMonth = v),
+                          textPrimary: textPrimary),
+                      _buildDatePickerColumn(
+                          label: l10n.t('year'),
+                          values: List.generate(89, (i) => 2008 - i),
+                          selected: selectedYear,
+                          onSelected: (v) =>
+                              setDialogState(() => selectedYear = v),
+                          textPrimary: textPrimary),
+                    ]),
+              ]),
             ),
             actions: [
               TextButton(
                   onPressed: () => Navigator.pop(context),
-                  child: Text('Annuler', style: TextStyle(color: textPrimary))),
+                  child: Text(l10n.t('cancel'),
+                      style: TextStyle(color: textPrimary))),
               ElevatedButton(
                 onPressed: () {
                   setState(() => _dobController.text =
                       '${selectedDay.toString().padLeft(2, '0')}/${selectedMonth.toString().padLeft(2, '0')}/$selectedYear');
                   Navigator.pop(context);
                 },
-                child: const Text('Valider'),
+                child: Text(l10n.t('validate')),
               ),
             ],
           );
@@ -260,12 +252,13 @@ class _SignUpScreenState extends State<SignUpScreen> {
     );
   }
 
-  Widget _buildDatePickerColumn(
-      {required String label,
-      required List<int> values,
-      required int selected,
-      required ValueChanged<int> onSelected,
-      required Color textPrimary}) {
+  Widget _buildDatePickerColumn({
+    required String label,
+    required List<int> values,
+    required int selected,
+    required ValueChanged<int> onSelected,
+    required Color textPrimary,
+  }) {
     return Column(children: [
       Text(label,
           style: TextStyle(
@@ -301,33 +294,40 @@ class _SignUpScreenState extends State<SignUpScreen> {
     ]);
   }
 
-  void _createAccount() async {
+  Future<void> _createAccount() async {
+    final l10n = AppLocalizations.of(context);
     if (!_consentDataTreatment || !_consentShareCardiologist) {
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-          content: Text('Veuillez accepter les consentements obligatoires'),
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+          content: Text(l10n.t('consent_required_error')),
           backgroundColor: Colors.red));
       return;
     }
     final password = _passwordController.text.trim();
     final confirmPassword = _confirmPasswordController.text.trim();
     if (password != confirmPassword) {
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-          content: Text('Les mots de passe ne correspondent pas'),
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+          content: Text(l10n.t('passwords_dont_match')),
           backgroundColor: Colors.red));
       return;
     }
     if (!_validatePassword(password)) {
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-          content: Text(
-              'Mot de passe invalide : il doit contenir au moins 1 minuscule, 1 majuscule, 1 chiffre et 1 symbole spécial'),
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+          content: Text(l10n.t('password_invalid_error')),
           backgroundColor: Colors.red,
-          duration: Duration(seconds: 6)));
+          duration: const Duration(seconds: 6)));
       return;
     }
+
+    final navigator = Navigator.of(context);
+    final messenger = ScaffoldMessenger.of(context);
+    final appProvider = Provider.of<AppProvider>(context, listen: false);
+
     setState(() => _isLoading = true);
+
     try {
       final cleanPhone = _phoneController.text.replaceAll(RegExp(r'[\s-]'), '');
       final tunisianPhone = '+216$cleanPhone';
+
       final result = await _authService.signUp(
         email: _emailController.text.trim(),
         password: password,
@@ -341,59 +341,59 @@ class _SignUpScreenState extends State<SignUpScreen> {
         height: double.tryParse(_heightController.text) ?? 170.0,
         medicalHistory: _medicalHistoryController.text,
         allergies: _allergiesController.text,
-        // ✅ NOUVEAU : Passer le cardiologue sélectionné
         cardiologist: _selectedCardiologistLabel ?? '',
+        // ✅ Antécédents cardiaques — step 3
+        antecedentInfarctus: _hadInfarctus,
+        antecedentTroubleRythme: _hadRhythmDisorder,
+        antecedentHospitalisation: _hadHospitalization,
       );
-      if (mounted) {
-        if (result['success'] == true) {
-          final userId = _authService.currentUser?.id;
-          if (userId != null) {
-            Map<String, dynamic>? userData;
-            int retryCount = 0;
-            while (retryCount < 3 && userData == null) {
-              await Future.delayed(const Duration(milliseconds: 300));
-              userData = await _authService.getPatientData(userId);
-              if (userData == null) retryCount++;
-            }
-            if (userData != null && mounted) {
-              Provider.of<AppProvider>(context, listen: false)
-                  .updateProfileFromMap(userData);
-            }
+
+      if (!mounted) return;
+
+      if (result['success'] == true) {
+        final userId = _authService.currentUser?.id;
+        if (userId != null) {
+          Map<String, dynamic>? userData;
+          int retryCount = 0;
+          while (retryCount < 3 && userData == null) {
+            await Future.delayed(const Duration(milliseconds: 300));
+            if (!mounted) return;
+            userData = await _authService.getPatientData(userId);
+            if (userData == null) retryCount++;
           }
-          ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-              content: Text('Compte créé avec succès!'),
-              backgroundColor: Colors.green,
-              duration: Duration(seconds: 2)));
-          if (mounted) {
-            WidgetsBinding.instance.addPostFrameCallback((_) {
-              if (mounted) {
-                Navigator.of(context).pushAndRemoveUntil(
-                    MaterialPageRoute(builder: (_) => const MainShell()),
-                    (route) => false);
-              }
-            });
+          if (userData != null) {
+            appProvider.updateProfileFromMap(userData);
           }
-        } else {
-          ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-              content: Text(result['error'] ?? 'Une erreur est survenue'),
-              backgroundColor: Colors.red,
-              duration: const Duration(seconds: 5)));
-          setState(() => _isLoading = false);
         }
-      }
-    } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-            content: Text('Erreur: $e'),
+
+        await appProvider.initializeAfterAuth();
+        if (!mounted) return;
+
+        navigator.pushAndRemoveUntil(
+          MaterialPageRoute(builder: (_) => const MainShell()),
+          (route) => false,
+        );
+      } else {
+        if (!mounted) return;
+        setState(() => _isLoading = false);
+        messenger.showSnackBar(SnackBar(
+            content: Text(result['error'] ?? l10n.t('error')),
             backgroundColor: Colors.red,
             duration: const Duration(seconds: 5)));
-        setState(() => _isLoading = false);
       }
+    } catch (e) {
+      if (!mounted) return;
+      setState(() => _isLoading = false);
+      messenger.showSnackBar(SnackBar(
+          content: Text('${l10n.t('error_prefix')}$e'),
+          backgroundColor: Colors.red,
+          duration: const Duration(seconds: 5)));
     }
   }
 
   @override
   Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context);
     final bg = ThemeHelper.primary;
     final surface = ThemeHelper.surface(context);
     final border = ThemeHelper.border(context);
@@ -427,8 +427,8 @@ class _SignUpScreenState extends State<SignUpScreen> {
                       color: Colors.white,
                       letterSpacing: 2.5)),
               const SizedBox(height: 4),
-              const Text('Créez votre compte patient',
-                  style: TextStyle(fontSize: 13, color: Colors.white70)),
+              Text(l10n.t('create_account'),
+                  style: const TextStyle(fontSize: 13, color: Colors.white70)),
             ]),
             const SizedBox(height: 24),
             Container(
@@ -469,15 +469,13 @@ class _SignUpScreenState extends State<SignUpScreen> {
             ),
             const SizedBox(height: 32),
             Row(mainAxisAlignment: MainAxisAlignment.center, children: [
-              const Text('Déjà un compte ? ',
-                  style: TextStyle(fontSize: 14, color: Colors.white70)),
+              Text('${l10n.t('already_have_account')} ',
+                  style: const TextStyle(fontSize: 14, color: Colors.white70)),
               GestureDetector(
-                onTap: () {
-                  Navigator.of(context).pushReplacement(
-                      MaterialPageRoute(builder: (_) => const SignInScreen()));
-                },
-                child: const Text('Se connecter',
-                    style: TextStyle(
+                onTap: () => Navigator.of(context).pushReplacement(
+                    MaterialPageRoute(builder: (_) => const SignInScreen())),
+                child: Text(l10n.t('sign_in'),
+                    style: const TextStyle(
                         fontSize: 14,
                         fontWeight: FontWeight.w700,
                         color: Colors.white)),
@@ -517,28 +515,28 @@ class _SignUpScreenState extends State<SignUpScreen> {
                     color: ThemeHelper.getColor(context, Colors.grey[100]!,
                         AppColors.darkSurfaceVariant),
                     shape: BoxShape.circle),
-                child: Icon(Icons.arrow_back_ios_new_rounded,
+                child: Icon(Icons.arrow_back_rounded,
                     size: 18, color: textPrimary))));
   }
 
-  // ── Étape 1 ──
   Widget _buildStep1InsideCard(Color surface, Color border, Color textPrimary,
       Color textSecondary, Color textHint, Color inputFill, Color inputBorder) {
+    final l10n = AppLocalizations.of(context);
     return SingleChildScrollView(
         child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
       _buildBackButton(textPrimary),
       const SizedBox(height: 8),
-      Text('Informations personnelles',
+      Text(l10n.t('personal_info'),
           style: TextStyle(
               fontSize: 18, fontWeight: FontWeight.w800, color: textPrimary)),
       const SizedBox(height: 4),
-      Text('Commencez votre parcours cardiaque',
+      Text(l10n.t('personal_info_subtitle'),
           style: TextStyle(fontSize: 13, color: textSecondary)),
       const SizedBox(height: 20),
       Row(children: [
         Expanded(
             child: _buildTextField(
-                label: 'Prénom *',
+                label: '${l10n.t('first_name')} *',
                 controller: _firstNameController,
                 hint: 'Jean',
                 textPrimary: textPrimary,
@@ -548,7 +546,7 @@ class _SignUpScreenState extends State<SignUpScreen> {
         const SizedBox(width: 12),
         Expanded(
             child: _buildTextField(
-                label: 'Nom *',
+                label: '${l10n.t('last_name')} *',
                 controller: _lastNameController,
                 hint: 'Martin',
                 textPrimary: textPrimary,
@@ -558,7 +556,7 @@ class _SignUpScreenState extends State<SignUpScreen> {
       ]),
       const SizedBox(height: 16),
       _buildTextField(
-          label: 'E-mail *',
+          label: '${l10n.t('email')} *',
           controller: _emailController,
           hint: 'patient@exemple.fr',
           icon: Icons.email_outlined,
@@ -568,7 +566,7 @@ class _SignUpScreenState extends State<SignUpScreen> {
           inputFill: inputFill,
           inputBorder: inputBorder),
       const SizedBox(height: 16),
-      Text('Téléphone *',
+      Text('${l10n.t('phone')} *',
           style: TextStyle(
               fontSize: 13, fontWeight: FontWeight.w600, color: textPrimary)),
       const SizedBox(height: 8),
@@ -577,9 +575,9 @@ class _SignUpScreenState extends State<SignUpScreen> {
             padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 14),
             decoration: BoxDecoration(
                 color: inputFill,
-                borderRadius: const BorderRadius.only(
-                    topLeft: Radius.circular(10),
-                    bottomLeft: Radius.circular(10)),
+                borderRadius: const BorderRadiusDirectional.only(
+                    topStart: Radius.circular(10),
+                    bottomStart: Radius.circular(10)),
                 border: Border.all(color: inputBorder)),
             child: const Text('+216',
                 style: TextStyle(fontSize: 15, fontWeight: FontWeight.w600))),
@@ -611,27 +609,27 @@ class _SignUpScreenState extends State<SignUpScreen> {
                         borderRadius: BorderRadius.only(
                             topRight: Radius.circular(10),
                             bottomRight: Radius.circular(10)),
-                        borderSide: BorderSide(
-                            color: Color(0xFF1A47C0), width: 1.5)),
+                        borderSide:
+                            BorderSide(color: Color(0xFF1A47C0), width: 1.5)),
                     errorBorder: const OutlineInputBorder(
                         borderRadius: BorderRadius.only(
                             topRight: Radius.circular(10),
                             bottomRight: Radius.circular(10)),
                         borderSide: BorderSide(color: Color(0xFFE53935))),
                     counterText: ''),
-                validator: _validatePhone,
+                validator: (v) => _validatePhone(v, l10n),
                 onChanged: (value) {
                   final cleanValue = value.replaceAll(RegExp(r'[\s-]'), '');
                   if (cleanValue.length > 8) {
                     _phoneController.text = cleanValue.substring(0, 8);
-                    _phoneController.selection =
-                        TextSelection.fromPosition(const TextPosition(offset: 8));
+                    _phoneController.selection = TextSelection.fromPosition(
+                        const TextPosition(offset: 8));
                   }
                 })),
       ]),
       const SizedBox(height: 16),
       _buildTextField(
-          label: 'Date de naissance *',
+          label: '${l10n.t('birth_date')} *',
           controller: _dobController,
           hint: 'jj/mm/aaaa',
           icon: Icons.calendar_today_outlined,
@@ -645,7 +643,7 @@ class _SignUpScreenState extends State<SignUpScreen> {
           inputBorder: inputBorder),
       const SizedBox(height: 16),
       _buildTextField(
-          label: 'Mot de passe *',
+          label: '${l10n.t('password')} *',
           controller: _passwordController,
           hint: '••••••••',
           icon: Icons.lock_outline_rounded,
@@ -663,13 +661,12 @@ class _SignUpScreenState extends State<SignUpScreen> {
           inputFill: inputFill,
           inputBorder: inputBorder),
       const SizedBox(height: 8),
-      Text(
-          'Doit contenir : minuscule, majuscule, chiffre et symbole (!@#\$%^&*)',
+      Text(l10n.t('password_invalid_error'),
           style: TextStyle(
               fontSize: 11, color: textSecondary, fontStyle: FontStyle.italic)),
       const SizedBox(height: 8),
       _buildTextField(
-          label: 'Confirmer le mot de passe *',
+          label: '${l10n.t('confirm_password')} *',
           controller: _confirmPasswordController,
           hint: '••••••••',
           icon: Icons.lock_outline_rounded,
@@ -704,38 +701,35 @@ class _SignUpScreenState extends State<SignUpScreen> {
                       height: 22,
                       child: CircularProgressIndicator(
                           color: Colors.white, strokeWidth: 2.5))
-                  : const Row(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                          Text('Suivant',
-                              style: TextStyle(
-                                  fontSize: 13, fontWeight: FontWeight.w700)),
-                          SizedBox(width: 8),
-                          Icon(Icons.arrow_forward, size: 18)
-                        ]))),
+                  : Row(mainAxisAlignment: MainAxisAlignment.center, children: [
+                      Text(l10n.t('next'),
+                          style: const TextStyle(
+                              fontSize: 13, fontWeight: FontWeight.w700)),
+                      const SizedBox(width: 8),
+                      const Icon(Icons.arrow_forward_rounded, size: 18)
+                    ]))),
     ]));
   }
 
-  // ── Étape 2 — AVEC DROPDOWN CARDIOLOGUE ──
   Widget _buildStep2InsideCard(Color surface, Color border, Color textPrimary,
       Color textSecondary, Color textHint, Color inputFill, Color inputBorder) {
+    final l10n = AppLocalizations.of(context);
     return SingleChildScrollView(
         child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-      _buildBackButton(textPrimary), const SizedBox(height: 8),
-      Text('Dossier médical',
+      _buildBackButton(textPrimary),
+      const SizedBox(height: 8),
+      Text(l10n.t('medical_info'),
           style: TextStyle(
               fontSize: 18, fontWeight: FontWeight.w800, color: textPrimary)),
       const SizedBox(height: 4),
-      Text('Informations pour votre suivi personnalisé',
+      Text(l10n.t('medical_info_subtitle'),
           style: TextStyle(fontSize: 13, color: textSecondary)),
       const SizedBox(height: 20),
-
-      // Groupe sanguin
       _buildDropdownField(
-          label: 'Groupe sanguin',
+          label: l10n.t('blood_type'),
           value: _bloodType,
-          hint: 'Sélectionner...',
-          items: ['A+', 'A-', 'B+', 'B-', 'AB+', 'AB-', 'O+', 'O-'],
+          hint: l10n.t('select_placeholder'),
+          items: const ['A+', 'A-', 'B+', 'B-', 'AB+', 'AB-', 'O+', 'O-'],
           onChanged: (v) => setState(() => _bloodType = v),
           icon: Icons.bloodtype_outlined,
           textPrimary: textPrimary,
@@ -744,13 +738,11 @@ class _SignUpScreenState extends State<SignUpScreen> {
           inputFill: inputFill,
           inputBorder: inputBorder),
       const SizedBox(height: 16),
-
-      // Pathologie cardiaque
       _buildDropdownField(
-          label: 'Pathologie cardiaque',
+          label: l10n.t('cardiac_pathology'),
           value: _cardiacPathology,
-          hint: 'Sélectionner...',
-          items: [
+          hint: l10n.t('select_placeholder'),
+          items: const [
             'Hypertension',
             'Insuffisance cardiaque',
             'Trouble du rythme',
@@ -766,9 +758,8 @@ class _SignUpScreenState extends State<SignUpScreen> {
           inputBorder: inputBorder),
       const SizedBox(height: 16),
 
-      // ✅ NOUVEAU : Dropdown Cardiologue
-      // ✅ NOUVEAU : Dropdown Cardiologue (CORRIGÉ)
-      Text('Mon cardiologue',
+      // Cardiologue
+      Text(l10n.t('my_cardiologist'),
           style: TextStyle(
               fontSize: 13, fontWeight: FontWeight.w600, color: textPrimary)),
       const SizedBox(height: 8),
@@ -785,7 +776,7 @@ class _SignUpScreenState extends State<SignUpScreen> {
                     height: 16,
                     child: CircularProgressIndicator(strokeWidth: 2)),
                 const SizedBox(width: 12),
-                Text('Chargement...', style: TextStyle(color: textSecondary))
+                Text(l10n.t('loading'), style: TextStyle(color: textSecondary))
               ]))
           : _cardiologists.isEmpty
               ? Container(
@@ -795,11 +786,9 @@ class _SignUpScreenState extends State<SignUpScreen> {
                       color: inputFill,
                       borderRadius: BorderRadius.circular(10),
                       border: Border.all(color: inputBorder)),
-                  child: Text('Aucun cardiologue disponible',
+                  child: Text(l10n.t('no_cardiologist_found'),
                       style: TextStyle(color: textSecondary, fontSize: 13)))
-              : StatefulBuilder(
-                  // ✅ StatefulBuilder pour mise à jour immédiate indépendante
-                  builder: (context, setLocalState) {
+              : StatefulBuilder(builder: (context, setLocalState) {
                   return Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
@@ -827,7 +816,7 @@ class _SignUpScreenState extends State<SignUpScreen> {
                                   Icon(Icons.medical_services_outlined,
                                       size: 18, color: textHint),
                                   const SizedBox(width: 8),
-                                  Text('Sélectionner...',
+                                  Text(l10n.t('select_placeholder'),
                                       style: TextStyle(
                                           color: textHint, fontSize: 13)),
                                 ]),
@@ -835,7 +824,6 @@ class _SignUpScreenState extends State<SignUpScreen> {
                                 icon: Icon(Icons.arrow_drop_down,
                                     color: textSecondary),
                                 dropdownColor: inputFill,
-                                // ✅ Items sans Row+Icon pour éviter l'overflow
                                 items: _cardiologists.map((c) {
                                   return DropdownMenuItem<String>(
                                     value: c['label'] as String,
@@ -850,10 +838,8 @@ class _SignUpScreenState extends State<SignUpScreen> {
                                 }).toList(),
                                 onChanged: (String? value) {
                                   if (value == null) return;
-                                  // ✅ Double setState : local + global
-                                  setLocalState(() {
-                                    _selectedCardiologistLabel = value;
-                                  });
+                                  setLocalState(
+                                      () => _selectedCardiologistLabel = value);
                                   setState(() {
                                     _selectedCardiologistLabel = value;
                                     final selected = _cardiologists.firstWhere(
@@ -867,7 +853,6 @@ class _SignUpScreenState extends State<SignUpScreen> {
                                 },
                               ),
                             )),
-                        // ✅ Confirmation visible immédiatement
                         if (_selectedCardiologistLabel != null) ...[
                           const SizedBox(height: 6),
                           Row(children: [
@@ -886,7 +871,7 @@ class _SignUpScreenState extends State<SignUpScreen> {
                           ]),
                         ] else ...[
                           const SizedBox(height: 4),
-                          Text('Optionnel — Vous pourrez changer plus tard',
+                          Text(l10n.t('optional'),
                               style: TextStyle(
                                   fontSize: 11,
                                   color: textSecondary,
@@ -894,14 +879,11 @@ class _SignUpScreenState extends State<SignUpScreen> {
                         ],
                       ]);
                 }),
-
       const SizedBox(height: 16),
-
-      // Poids / Taille
       Row(children: [
         Expanded(
             child: _buildTextField(
-                label: 'Poids (kg)',
+                label: l10n.t('weight'),
                 controller: _weightController,
                 hint: '70',
                 keyboardType: TextInputType.number,
@@ -912,7 +894,7 @@ class _SignUpScreenState extends State<SignUpScreen> {
         const SizedBox(width: 12),
         Expanded(
             child: _buildTextField(
-                label: 'Taille (cm)',
+                label: l10n.t('height'),
                 controller: _heightController,
                 hint: '170',
                 keyboardType: TextInputType.number,
@@ -922,10 +904,8 @@ class _SignUpScreenState extends State<SignUpScreen> {
                 inputBorder: inputBorder)),
       ]),
       const SizedBox(height: 16),
-
-      // Antécédents médicaux
       _buildTextField(
-          label: 'Antécédents médicaux',
+          label: l10n.t('history'),
           controller: _medicalHistoryController,
           hint: 'Ex: IDM 2019...',
           maxLines: 2,
@@ -934,10 +914,8 @@ class _SignUpScreenState extends State<SignUpScreen> {
           inputFill: inputFill,
           inputBorder: inputBorder),
       const SizedBox(height: 16),
-
-      // Allergies
       _buildTextField(
-          label: 'Allergies',
+          label: l10n.t('allergies'),
           controller: _allergiesController,
           hint: 'Ex: Pénicilline...',
           maxLines: 2,
@@ -946,8 +924,6 @@ class _SignUpScreenState extends State<SignUpScreen> {
           inputFill: inputFill,
           inputBorder: inputBorder),
       const SizedBox(height: 24),
-
-      // Bouton Suivant
       SizedBox(
           width: double.infinity,
           height: 50,
@@ -959,35 +935,34 @@ class _SignUpScreenState extends State<SignUpScreen> {
                   elevation: 0,
                   shape: RoundedRectangleBorder(
                       borderRadius: BorderRadius.circular(10))),
-              child: const Row(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    Text('Suivant',
-                        style: TextStyle(
-                            fontSize: 13, fontWeight: FontWeight.w700)),
-                    SizedBox(width: 8),
-                    Icon(Icons.arrow_forward, size: 18)
-                  ]))),
+              child:
+                  Row(mainAxisAlignment: MainAxisAlignment.center, children: [
+                Text(l10n.t('next'),
+                    style: const TextStyle(
+                        fontSize: 13, fontWeight: FontWeight.w700)),
+                const SizedBox(width: 8),
+                const Icon(Icons.arrow_forward_rounded, size: 18)
+              ]))),
     ]));
   }
 
-  // ── Étape 3 ──
   Widget _buildStep3InsideCard(
       Color surface, Color border, Color textPrimary, Color textSecondary) {
+    final l10n = AppLocalizations.of(context);
     return SingleChildScrollView(
         child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
       _buildBackButton(textPrimary),
       const SizedBox(height: 8),
-      Text('Antécédents cardiaques',
+      Text(l10n.t('cardiac_history_title'),
           style: TextStyle(
               fontSize: 18, fontWeight: FontWeight.w800, color: textPrimary)),
       const SizedBox(height: 4),
-      Text('Répondez par Oui ou Non',
+      Text(l10n.t('cardiac_history_subtitle'),
           style: TextStyle(fontSize: 13, color: textSecondary)),
       const SizedBox(height: 20),
       _buildQuestion(
           number: 1,
-          question: 'Avez-vous déjà eu un infarctus ?',
+          question: l10n.t('question_infarctus'),
           value: _hadInfarctus,
           onChanged: (v) => setState(() => _hadInfarctus = v),
           textPrimary: textPrimary,
@@ -995,7 +970,7 @@ class _SignUpScreenState extends State<SignUpScreen> {
       const SizedBox(height: 16),
       _buildQuestion(
           number: 2,
-          question: 'Trouble du rythme cardiaque ?',
+          question: l10n.t('question_rhythm'),
           value: _hadRhythmDisorder,
           onChanged: (v) => setState(() => _hadRhythmDisorder = v),
           textPrimary: textPrimary,
@@ -1003,7 +978,7 @@ class _SignUpScreenState extends State<SignUpScreen> {
       const SizedBox(height: 16),
       _buildQuestion(
           number: 3,
-          question: 'Hospitalisation cardiaque ?',
+          question: l10n.t('question_hospitalization'),
           value: _hadHospitalization,
           onChanged: (v) => setState(() => _hadHospitalization = v),
           textPrimary: textPrimary,
@@ -1020,35 +995,34 @@ class _SignUpScreenState extends State<SignUpScreen> {
                   elevation: 0,
                   shape: RoundedRectangleBorder(
                       borderRadius: BorderRadius.circular(10))),
-              child: const Row(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    Text('Suivant',
-                        style: TextStyle(
-                            fontSize: 13, fontWeight: FontWeight.w700)),
-                    SizedBox(width: 8),
-                    Icon(Icons.arrow_forward, size: 18)
-                  ]))),
+              child:
+                  Row(mainAxisAlignment: MainAxisAlignment.center, children: [
+                Text(l10n.t('next'),
+                    style: const TextStyle(
+                        fontSize: 13, fontWeight: FontWeight.w700)),
+                const SizedBox(width: 8),
+                const Icon(Icons.arrow_forward_rounded, size: 18)
+              ]))),
     ]));
   }
 
-  // ── Étape 4 ──
   Widget _buildStep4InsideCard(
       Color surface, Color border, Color textPrimary, Color textSecondary) {
+    final l10n = AppLocalizations.of(context);
     return SingleChildScrollView(
         child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
       _buildBackButton(textPrimary),
       const SizedBox(height: 8),
-      Text('Consentement',
+      Text(l10n.t('consent_title'),
           style: TextStyle(
               fontSize: 18, fontWeight: FontWeight.w800, color: textPrimary)),
       const SizedBox(height: 4),
-      Text('Lisez et acceptez les conditions',
+      Text(l10n.t('consent_subtitle'),
           style: TextStyle(fontSize: 13, color: textSecondary)),
       const SizedBox(height: 20),
       _buildConsentCheckbox(
-          title: 'Traitement des données *',
-          description: "J'autorise CAREDIFY à collecter mes données de santé.",
+          title: l10n.t('consent_data_treatment'),
+          description: l10n.t('consent_data_treatment_desc'),
           value: _consentDataTreatment,
           onChanged: (v) => setState(() => _consentDataTreatment = v!),
           obligatory: true,
@@ -1058,8 +1032,8 @@ class _SignUpScreenState extends State<SignUpScreen> {
           border: border),
       const SizedBox(height: 12),
       _buildConsentCheckbox(
-          title: 'Partage cardiologue *',
-          description: "J'autorise la transmission à mon cardiologue.",
+          title: l10n.t('consent_share_cardiologist'),
+          description: l10n.t('consent_share_cardiologist_desc'),
           value: _consentShareCardiologist,
           onChanged: (v) => setState(() => _consentShareCardiologist = v!),
           obligatory: true,
@@ -1069,8 +1043,8 @@ class _SignUpScreenState extends State<SignUpScreen> {
           border: border),
       const SizedBox(height: 12),
       _buildConsentCheckbox(
-          title: 'Recherche (optionnel)',
-          description: "J'accepte l'utilisation anonymisée pour la recherche.",
+          title: l10n.t('consent_research'),
+          description: l10n.t('consent_research_desc'),
           value: _consentResearch,
           onChanged: (v) => setState(() => _consentResearch = v!),
           obligatory: false,
@@ -1114,7 +1088,7 @@ class _SignUpScreenState extends State<SignUpScreen> {
                               ? Colors.white
                               : Colors.white70),
                       const SizedBox(width: 8),
-                      Text('Créer mon compte',
+                      Text(l10n.t('create_my_account'),
                           style: TextStyle(
                               fontSize: 13,
                               fontWeight: FontWeight.w700,
@@ -1124,10 +1098,10 @@ class _SignUpScreenState extends State<SignUpScreen> {
                                   : Colors.white70))
                     ]))),
       if (!(_consentDataTreatment && _consentShareCardiologist))
-        const Padding(
-            padding: EdgeInsets.only(top: 12),
-            child: Text('⚠️ Veuillez accepter les 2 consentements obligatoires',
-                style: TextStyle(
+        Padding(
+            padding: const EdgeInsets.only(top: 12),
+            child: Text(l10n.t('required_consents_warning'),
+                style: const TextStyle(
                     fontSize: 12,
                     color: Colors.orange,
                     fontWeight: FontWeight.w500),
@@ -1135,21 +1109,21 @@ class _SignUpScreenState extends State<SignUpScreen> {
     ]));
   }
 
-  // ── Helpers ──
-  Widget _buildTextField(
-      {required String label,
-      required TextEditingController controller,
-      required String hint,
-      IconData? icon,
-      Widget? suffixIcon,
-      bool obscureText = false,
-      TextInputType? keyboardType,
-      int maxLines = 1,
-      bool readOnly = false,
-      required Color textPrimary,
-      required Color textHint,
-      required Color inputFill,
-      required Color inputBorder}) {
+  Widget _buildTextField({
+    required String label,
+    required TextEditingController controller,
+    required String hint,
+    IconData? icon,
+    Widget? suffixIcon,
+    bool obscureText = false,
+    TextInputType? keyboardType,
+    int maxLines = 1,
+    bool readOnly = false,
+    required Color textPrimary,
+    required Color textHint,
+    required Color inputFill,
+    required Color inputBorder,
+  }) {
     return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
       Text(label,
           style: TextStyle(
@@ -1185,18 +1159,19 @@ class _SignUpScreenState extends State<SignUpScreen> {
     ]);
   }
 
-  Widget _buildDropdownField(
-      {required String label,
-      required String? value,
-      required String hint,
-      required List<String> items,
-      required ValueChanged<String?> onChanged,
-      IconData? icon,
-      required Color textPrimary,
-      required Color textSecondary,
-      required Color textHint,
-      required Color inputFill,
-      required Color inputBorder}) {
+  Widget _buildDropdownField({
+    required String label,
+    required String? value,
+    required String hint,
+    required List<String> items,
+    required ValueChanged<String?> onChanged,
+    IconData? icon,
+    required Color textPrimary,
+    required Color textSecondary,
+    required Color textHint,
+    required Color inputFill,
+    required Color inputBorder,
+  }) {
     return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
       Text(label,
           style: TextStyle(
@@ -1230,13 +1205,15 @@ class _SignUpScreenState extends State<SignUpScreen> {
     ]);
   }
 
-  Widget _buildQuestion(
-      {required int number,
-      required String question,
-      required bool? value,
-      required ValueChanged<bool?> onChanged,
-      required Color textPrimary,
-      required Color textSecondary}) {
+  Widget _buildQuestion({
+    required int number,
+    required String question,
+    required bool? value,
+    required ValueChanged<bool?> onChanged,
+    required Color textPrimary,
+    required Color textSecondary,
+  }) {
+    final l10n = AppLocalizations.of(context);
     return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
       Row(children: [
         Container(
@@ -1276,7 +1253,7 @@ class _SignUpScreenState extends State<SignUpScreen> {
                                 ? ThemeHelper.primary
                                 : ThemeHelper.border(context))),
                     child: Center(
-                        child: Text('Oui',
+                        child: Text(l10n.t('yes'),
                             style: TextStyle(
                                 color:
                                     value == true ? Colors.white : textPrimary,
@@ -1298,7 +1275,7 @@ class _SignUpScreenState extends State<SignUpScreen> {
                                 ? Colors.grey
                                 : ThemeHelper.border(context))),
                     child: Center(
-                        child: Text('Non',
+                        child: Text(l10n.t('no'),
                             style: TextStyle(
                                 color:
                                     value == false ? Colors.white : textPrimary,
@@ -1307,16 +1284,18 @@ class _SignUpScreenState extends State<SignUpScreen> {
     ]);
   }
 
-  Widget _buildConsentCheckbox(
-      {required String title,
-      required String description,
-      required bool value,
-      required ValueChanged<bool?> onChanged,
-      required bool obligatory,
-      required Color textPrimary,
-      required Color textSecondary,
-      required Color surface,
-      required Color border}) {
+  Widget _buildConsentCheckbox({
+    required String title,
+    required String description,
+    required bool value,
+    required ValueChanged<bool?> onChanged,
+    required bool obligatory,
+    required Color textPrimary,
+    required Color textSecondary,
+    required Color surface,
+    required Color border,
+  }) {
+    final l10n = AppLocalizations.of(context);
     return Container(
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
@@ -1345,8 +1324,8 @@ class _SignUpScreenState extends State<SignUpScreen> {
             style: TextStyle(fontSize: 12, color: textSecondary, height: 1.4)),
         if (obligatory) ...[
           const SizedBox(height: 4),
-          const Text('Obligatoire',
-              style: TextStyle(
+          Text(l10n.t('required'),
+              style: const TextStyle(
                   fontSize: 11, color: Colors.red, fontWeight: FontWeight.w500))
         ],
       ]),

@@ -4,6 +4,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import '../providers/app_provider.dart';
 import '../utils/theme_helper.dart';
 import '../theme/app_theme.dart';
+import '../l10n/app_localizations.dart';
 import 'emergency_screen.dart';
 
 class MessagesScreen extends StatefulWidget {
@@ -21,11 +22,15 @@ class _MessagesScreenState extends State<MessagesScreen> {
   List<Map<String, dynamic>> _cardiologists = [];
   bool _isLoading = true;
   String? _myCardiologistLabel;
+  bool _didInit = false;
 
   @override
-  void initState() {
-    super.initState();
-    _loadCardiologists();
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    if (!_didInit) {
+      _didInit = true;
+      _loadCardiologists();
+    }
   }
 
   @override
@@ -36,6 +41,7 @@ class _MessagesScreenState extends State<MessagesScreen> {
 
   Future<void> _loadCardiologists() async {
     setState(() => _isLoading = true);
+    final l10n = AppLocalizations.of(context);
     try {
       final userId = _supabase.auth.currentUser?.id;
 
@@ -48,10 +54,12 @@ class _MessagesScreenState extends State<MessagesScreen> {
         _myCardiologistLabel = patientData?['cardiologist'] as String?;
       }
 
+      // ✅ Filtre ajouté : status = 'active'
       final response = await _supabase
           .from('profiles')
           .select('id, full_name, specialty, hospital_clinic')
           .eq('role', 'carediologue')
+          .eq('status', 'active') // ← MODIFICATION ICI
           .order('full_name', ascending: true);
 
       if (!mounted) return;
@@ -73,7 +81,7 @@ class _MessagesScreenState extends State<MessagesScreen> {
           'label': label,
           'available': true,
           'rating': 4.7,
-          'lastMessage': 'Appuyez pour démarrer la conversation',
+          'lastMessage': l10n.t('tap_to_start_conversation'),
           'lastMessageTime': '',
           'unread': 0,
           'isMyCardiologist': _myCardiologistLabel != null &&
@@ -84,13 +92,11 @@ class _MessagesScreenState extends State<MessagesScreen> {
         };
       }).toList();
 
-      // Charger le dernier message + unread pour chaque cardiologue
       if (userId != null) {
         for (final doc in loaded) {
           final ids = [userId, doc['id'] as String]..sort();
           final convId = ids.join('_');
           try {
-            // Dernier message
             final lastMsgData = await _supabase
                 .from('messages')
                 .select('content, created_at, sender_id')
@@ -102,11 +108,10 @@ class _MessagesScreenState extends State<MessagesScreen> {
             if (lastMsgData != null) {
               final dt = DateTime.parse(lastMsgData['created_at']).toLocal();
               doc['lastMessage'] = lastMsgData['content'] as String;
-              doc['lastMessageTime'] =
-                  '${dt.hour.toString().padLeft(2, '0')}:${dt.minute.toString().padLeft(2, '0')}';
+              doc['lastMessageTime'] = '${dt.hour.toString().padLeft(2, '0')}:'
+                  '${dt.minute.toString().padLeft(2, '0')}';
             }
 
-            // Compteur non-lus
             final unreadData = await _supabase
                 .from('messages')
                 .select('id')
@@ -120,12 +125,10 @@ class _MessagesScreenState extends State<MessagesScreen> {
       }
 
       loaded.sort((a, b) {
-        if (a['isMyCardiologist'] == true && b['isMyCardiologist'] != true) {
+        if (a['isMyCardiologist'] == true && b['isMyCardiologist'] != true)
           return -1;
-        }
-        if (b['isMyCardiologist'] == true && a['isMyCardiologist'] != true) {
+        if (b['isMyCardiologist'] == true && a['isMyCardiologist'] != true)
           return 1;
-        }
         return 0;
       });
 
@@ -161,6 +164,7 @@ class _MessagesScreenState extends State<MessagesScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context);
     final bg = ThemeHelper.background(context);
     final surface = ThemeHelper.surface(context);
     final border = ThemeHelper.border(context);
@@ -178,24 +182,20 @@ class _MessagesScreenState extends State<MessagesScreen> {
             backgroundColor: surface,
             foregroundColor: textPri,
             elevation: 0,
-            title: Text('Messages',
+            title: Text(l10n.t('messages'),
                 style: TextStyle(
                     fontSize: 20, fontWeight: FontWeight.w800, color: textPri)),
             actions: [
-              // ── MODIFICATION : Navigation directe vers EmergencyScreen ──
               Padding(
-                padding: const EdgeInsets.only(right: 12),
+                padding: const EdgeInsetsDirectional.only(end: 12),
                 child: GestureDetector(
-                  onTap: () {
-                    // ✅ Navigation directe : EmergencyScreen gère l'INSERT
-                    Navigator.push(
-                      context,
-                      MaterialPageRoute(
-                        builder: (_) =>
-                            const EmergencyScreen(showBackButton: true),
-                      ),
-                    );
-                  },
+                  onTap: () => Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (_) =>
+                          const EmergencyScreen(showBackButton: true),
+                    ),
+                  ),
                   child: Container(
                     padding:
                         const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
@@ -208,12 +208,12 @@ class _MessagesScreenState extends State<MessagesScreen> {
                               blurRadius: 8,
                               spreadRadius: 1)
                         ]),
-                    child: const Row(mainAxisSize: MainAxisSize.min, children: [
-                      Icon(Icons.emergency_rounded,
+                    child: Row(mainAxisSize: MainAxisSize.min, children: [
+                      const Icon(Icons.emergency_rounded,
                           color: Colors.white, size: 16),
-                      SizedBox(width: 6),
-                      Text('Alerter',
-                          style: TextStyle(
+                      const SizedBox(width: 6),
+                      Text(l10n.t('emergency'),
+                          style: const TextStyle(
                               color: Colors.white,
                               fontSize: 13,
                               fontWeight: FontWeight.w700)),
@@ -233,14 +233,13 @@ class _MessagesScreenState extends State<MessagesScreen> {
                     children: [
                       CircularProgressIndicator(color: primary),
                       const SizedBox(height: 12),
-                      Text('Chargement des cardiologues...',
+                      Text(l10n.t('loading_cardiologists'),
                           style: TextStyle(color: textSec)),
                     ],
                   ),
                 )
               : Column(
                   children: [
-                    // ── Bannière alerte ──
                     if (hasAlert)
                       _AlertBanner(
                           onTap: () => Navigator.push(
@@ -248,13 +247,12 @@ class _MessagesScreenState extends State<MessagesScreen> {
                               MaterialPageRoute(
                                   builder: (_) => const EmergencyScreen(
                                       showBackButton: true)))),
-
-                    // ── Badge mon cardiologue ──
                     if (_myCardiologistLabel != null &&
                         _myCardiologistLabel!.isNotEmpty)
                       Container(
                         width: double.infinity,
-                        margin: const EdgeInsets.fromLTRB(16, 12, 16, 0),
+                        margin:
+                            const EdgeInsetsDirectional.fromSTEB(16, 12, 16, 0),
                         padding: const EdgeInsets.symmetric(
                             horizontal: 14, vertical: 10),
                         decoration: BoxDecoration(
@@ -267,7 +265,7 @@ class _MessagesScreenState extends State<MessagesScreen> {
                           const SizedBox(width: 8),
                           Expanded(
                               child: Text(
-                            'Mon cardiologue : $_myCardiologistLabel',
+                            '${l10n.t('my_cardiologist')} : $_myCardiologistLabel',
                             style: TextStyle(
                                 fontSize: 13,
                                 color: primary,
@@ -276,10 +274,9 @@ class _MessagesScreenState extends State<MessagesScreen> {
                           )),
                         ]),
                       ),
-
-                    // ── Recherche ──
                     Padding(
-                      padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
+                      padding:
+                          const EdgeInsetsDirectional.fromSTEB(16, 12, 16, 8),
                       child: Container(
                         decoration: BoxDecoration(
                             color: surface,
@@ -290,7 +287,7 @@ class _MessagesScreenState extends State<MessagesScreen> {
                           onChanged: (v) => setState(() => _searchQuery = v),
                           style: TextStyle(color: textPri),
                           decoration: InputDecoration(
-                            hintText: 'Rechercher un cardiologue...',
+                            hintText: l10n.t('search_cardiologist_hint'),
                             hintStyle: TextStyle(color: textSec, fontSize: 14),
                             prefixIcon: Icon(Icons.search_rounded,
                                 color: textSec, size: 22),
@@ -310,8 +307,6 @@ class _MessagesScreenState extends State<MessagesScreen> {
                         ),
                       ),
                     ),
-
-                    // ── Scroll horizontal (Online Doctors) ──
                     if (_onlineCardiologists.isNotEmpty)
                       SizedBox(
                         height: 88,
@@ -331,30 +326,28 @@ class _MessagesScreenState extends State<MessagesScreen> {
                           },
                         ),
                       ),
-
                     const SizedBox(height: 4),
-
-                    // ── Titre liste ──
                     Padding(
                       padding: const EdgeInsets.symmetric(
                           horizontal: 16, vertical: 8),
                       child: Row(children: [
                         Expanded(
-                            child: Text('Cardiologues',
+                            child: Text(l10n.t('cardiologists'),
                                 style: TextStyle(
                                     fontSize: 17,
                                     fontWeight: FontWeight.w800,
                                     color: textPri),
                                 overflow: TextOverflow.ellipsis)),
-                        Text('${_filtered.length} disponible(s)',
+                        Text(
+                            l10n
+                                .t('available_docs_count')
+                                .replaceAll('{count}', '${_filtered.length}'),
                             style: TextStyle(
                                 fontSize: 13,
                                 color: primary,
                                 fontWeight: FontWeight.w600)),
                       ]),
                     ),
-
-                    // ── Liste principale avec gestion d'overflow ──
                     Expanded(
                       child: _filtered.isEmpty
                           ? Center(
@@ -364,12 +357,12 @@ class _MessagesScreenState extends State<MessagesScreen> {
                                   Icon(Icons.search_off,
                                       size: 48, color: textSec),
                                   const SizedBox(height: 12),
-                                  Text('Aucun cardiologue trouvé',
+                                  Text(l10n.t('no_cardiologist_found'),
                                       style: TextStyle(color: textSec)),
                                   const SizedBox(height: 8),
                                   TextButton(
                                       onPressed: _loadCardiologists,
-                                      child: Text('Actualiser',
+                                      child: Text(l10n.t('retry'),
                                           style: TextStyle(color: primary))),
                                 ],
                               ),
@@ -378,8 +371,8 @@ class _MessagesScreenState extends State<MessagesScreen> {
                               onRefresh: _loadCardiologists,
                               color: primary,
                               child: ListView.builder(
-                                padding:
-                                    const EdgeInsets.fromLTRB(16, 0, 16, 16),
+                                padding: const EdgeInsetsDirectional.fromSTEB(
+                                    16, 0, 16, 16),
                                 itemCount: _filtered.length,
                                 itemBuilder: (context, i) {
                                   final doc = _filtered[i];
@@ -407,44 +400,46 @@ class _MessagesScreenState extends State<MessagesScreen> {
     Navigator.push(
       context,
       MaterialPageRoute(builder: (_) => _ChatScreen(doctor: doc)),
-    ).then((_) => _loadCardiologists()); // rafraîchir unread au retour
+    ).then((_) => _loadCardiologists());
   }
 }
 
-// ══════════════════════════════════════════════════════
+// ════════════════════════════════════════════════════
 // Bannière alerte
-// ══════════════════════════════════════════════════════
+// ════════════════════════════════════════════════════
 class _AlertBanner extends StatelessWidget {
   final VoidCallback onTap;
   const _AlertBanner({required this.onTap});
 
   @override
   Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context);
     return GestureDetector(
       onTap: onTap,
       child: Container(
         width: double.infinity,
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
         color: AppColors.critical,
-        child: const Row(children: [
-          Icon(Icons.emergency_rounded, color: Colors.white, size: 20),
-          SizedBox(width: 10),
+        child: Row(children: [
+          const Icon(Icons.emergency_rounded, color: Colors.white, size: 20),
+          const SizedBox(width: 10),
           Expanded(
-              child: Text('⚠️ Alerte cardiaque active — Appuyez pour voir',
-                  style: TextStyle(
+              child: Text(l10n.t('alert_active_press_to_see'),
+                  style: const TextStyle(
                       color: Colors.white,
                       fontWeight: FontWeight.w700,
                       fontSize: 14))),
-          Icon(Icons.arrow_forward_ios_rounded, color: Colors.white, size: 16),
+          const Icon(Icons.arrow_forward_rounded,
+              color: Colors.white, size: 16),
         ]),
       ),
     );
   }
 }
 
-// ══════════════════════════════════════════════════════
-// Cardiologue en ligne
-// ══════════════════════════════════════════════════════
+// ════════════════════════════════════════════════════
+// Cardiologue en ligne — scroll horizontal
+// ════════════════════════════════════════════════════
 class _OnlineDoctor extends StatelessWidget {
   final Map<String, dynamic> doc;
   final Color primary, textPri, textSec;
@@ -465,7 +460,7 @@ class _OnlineDoctor extends StatelessWidget {
       onTap: onTap,
       child: Container(
         width: 70,
-        margin: const EdgeInsets.only(right: 14),
+        margin: const EdgeInsetsDirectional.only(end: 14),
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           mainAxisSize: MainAxisSize.min,
@@ -483,9 +478,10 @@ class _OnlineDoctor extends StatelessWidget {
                   child: Text(
                     (doc['full_name'] as String)[0].toUpperCase(),
                     style: TextStyle(
-                        fontSize: 18,
-                        fontWeight: FontWeight.w800,
-                        color: primary),
+                      fontSize: 18,
+                      fontWeight: FontWeight.w800,
+                      color: primary,
+                    ),
                   ),
                 ),
               ),
@@ -532,9 +528,9 @@ class _OnlineDoctor extends StatelessWidget {
   }
 }
 
-// ══════════════════════════════════════════════════════
+// ════════════════════════════════════════════════════
 // Carte cardiologue
-// ══════════════════════════════════════════════════════
+// ════════════════════════════════════════════════════
 class _DoctorCard extends StatelessWidget {
   final Map<String, dynamic> doc;
   final Color primary, textPri, textSec, surface, border;
@@ -552,6 +548,7 @@ class _DoctorCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context);
     final isMyDoc = doc['isMyCardiologist'] == true;
     final hasUnread = (doc['unread'] as int) > 0;
     final lastTime = (doc['lastMessageTime'] as String).isNotEmpty
@@ -582,7 +579,7 @@ class _DoctorCard extends StatelessWidget {
               child: Row(mainAxisSize: MainAxisSize.min, children: [
                 Icon(Icons.star_rounded, color: primary, size: 12),
                 const SizedBox(width: 4),
-                Text('Mon cardiologue',
+                Text(l10n.t('my_cardiologist'),
                     style: TextStyle(
                         fontSize: 11,
                         color: primary,
@@ -667,8 +664,8 @@ class _DoctorCard extends StatelessWidget {
                   decoration: BoxDecoration(
                       color: const Color(0xFF10B981).withOpacity(0.12),
                       borderRadius: BorderRadius.circular(20)),
-                  child: const Text('En ligne',
-                      style: TextStyle(
+                  child: Text(l10n.t('online_status'),
+                      style: const TextStyle(
                           fontSize: 10,
                           color: Color(0xFF10B981),
                           fontWeight: FontWeight.w600)),
@@ -696,7 +693,7 @@ class _DoctorCard extends StatelessWidget {
             const SizedBox(width: 8),
             if (hasUnread)
               Container(
-                margin: const EdgeInsets.only(right: 8),
+                margin: const EdgeInsetsDirectional.only(end: 8),
                 padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
                 decoration: BoxDecoration(
                     color: primary, borderRadius: BorderRadius.circular(100)),
@@ -720,7 +717,7 @@ class _DoctorCard extends StatelessWidget {
                         borderRadius: BorderRadius.circular(8)),
                     textStyle: const TextStyle(
                         fontSize: 12, fontWeight: FontWeight.w600)),
-                child: const Text('Message'),
+                child: Text(l10n.t('messages')),
               ),
             ),
           ]),
@@ -730,9 +727,9 @@ class _DoctorCard extends StatelessWidget {
   }
 }
 
-// ══════════════════════════════════════════════════════
-// Écran de chat — messages réels Supabase + Realtime
-// ══════════════════════════════════════════════════════
+// ════════════════════════════════════════════════════
+// Écran de chat — messages réels + Realtime
+// ════════════════════════════════════════════════════
 class _ChatScreen extends StatefulWidget {
   final Map<String, dynamic> doctor;
   const _ChatScreen({required this.doctor});
@@ -759,11 +756,8 @@ class _ChatScreenState extends State<_ChatScreen> {
     super.initState();
     _patientUid = _supabase.auth.currentUser!.id;
     _doctorUid = widget.doctor['id'] as String;
-
-    // Conversation ID stable : trier les 2 UUIDs alphabétiquement
     final ids = [_patientUid, _doctorUid]..sort();
     _conversationId = ids.join('_');
-
     _loadHistory();
     _subscribeRealtime();
   }
@@ -776,7 +770,6 @@ class _ChatScreenState extends State<_ChatScreen> {
     super.dispose();
   }
 
-  // ── Charger l'historique ───────────────────────────────────────
   Future<void> _loadHistory() async {
     setState(() => _loading = true);
     try {
@@ -794,8 +787,8 @@ class _ChatScreenState extends State<_ChatScreen> {
           'id': m['id'],
           'text': m['content'],
           'isMe': isMe,
-          'time':
-              '${dt.hour.toString().padLeft(2, '0')}:${dt.minute.toString().padLeft(2, '0')}',
+          'time': '${dt.hour.toString().padLeft(2, '0')}:'
+              '${dt.minute.toString().padLeft(2, '0')}',
           'isRead': m['is_read'] ?? false,
         };
       }).toList();
@@ -807,7 +800,6 @@ class _ChatScreenState extends State<_ChatScreen> {
         });
       }
 
-      // Marquer les messages du cardiologue comme lus
       await _supabase
           .from('messages')
           .update({'is_read': true})
@@ -817,12 +809,11 @@ class _ChatScreenState extends State<_ChatScreen> {
 
       _scrollToBottom();
     } catch (e) {
-      debugPrint('❌ Erreur chargement historique: $e');
+      debugPrint('❌ Erreur historique: $e');
       if (mounted) setState(() => _loading = false);
     }
   }
 
-  // ── Realtime — écouter les nouveaux messages ───────────────────
   void _subscribeRealtime() {
     _channel = _supabase
         .channel('conv:$_conversationId')
@@ -839,20 +830,16 @@ class _ChatScreenState extends State<_ChatScreen> {
             final m = payload.newRecord;
             final isMe = (m['sender_id'] as String) == _patientUid;
             final dt = DateTime.parse(m['created_at'] as String).toLocal();
-
             final msg = {
               'id': m['id'],
               'text': m['content'],
               'isMe': isMe,
-              'time':
-                  '${dt.hour.toString().padLeft(2, '0')}:${dt.minute.toString().padLeft(2, '0')}',
+              'time': '${dt.hour.toString().padLeft(2, '0')}:'
+                  '${dt.minute.toString().padLeft(2, '0')}',
               'isRead': m['is_read'] ?? false,
             };
-
             if (mounted) setState(() => _messages.add(msg));
             _scrollToBottom();
-
-            // Marquer lu si c'est un message reçu du cardiologue
             if (!isMe) {
               _supabase
                   .from('messages')
@@ -863,14 +850,11 @@ class _ChatScreenState extends State<_ChatScreen> {
         .subscribe();
   }
 
-  // ── Envoyer un message ─────────────────────────────────────────
   Future<void> _sendMessage() async {
     final text = _msgController.text.trim();
     if (text.isEmpty || _sending) return;
-
     setState(() => _sending = true);
     _msgController.clear();
-
     try {
       await _supabase.from('messages').insert({
         'conversation_id': _conversationId,
@@ -878,10 +862,8 @@ class _ChatScreenState extends State<_ChatScreen> {
         'receiver_id': _doctorUid,
         'content': text,
       });
-      // Le message apparaît via Realtime — pas de setState ici
     } catch (e) {
       debugPrint('❌ Erreur envoi: $e');
-      // Remettre le texte en cas d'erreur
       if (mounted) _msgController.text = text;
     } finally {
       if (mounted) setState(() => _sending = false);
@@ -902,6 +884,7 @@ class _ChatScreenState extends State<_ChatScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context);
     final bg = ThemeHelper.background(context);
     final surface = ThemeHelper.surface(context);
     final border = ThemeHelper.border(context);
@@ -966,7 +949,7 @@ class _ChatScreenState extends State<_ChatScreen> {
                       decoration: BoxDecoration(
                           color: primary.withOpacity(0.1),
                           borderRadius: BorderRadius.circular(10)),
-                      child: Text('Mon cardio',
+                      child: Text(l10n.t('my_cardio'),
                           style: TextStyle(
                               fontSize: 9,
                               color: primary,
@@ -974,10 +957,9 @@ class _ChatScreenState extends State<_ChatScreen> {
                     ),
                   ],
                 ]),
-                const Text(
-                  '● En ligne',
-                  style: TextStyle(fontSize: 11, color: Color(0xFF10B981)),
-                ),
+                Text('● ${l10n.t('online_status')}',
+                    style: const TextStyle(
+                        fontSize: 11, color: Color(0xFF10B981))),
               ],
             ),
           ),
@@ -987,7 +969,6 @@ class _ChatScreenState extends State<_ChatScreen> {
             child: Container(height: 1, color: border)),
       ),
       body: Column(children: [
-        // ── Liste messages ──────────────────────────────────────
         Expanded(
           child: _loading
               ? Center(child: CircularProgressIndicator(color: primary))
@@ -999,20 +980,20 @@ class _ChatScreenState extends State<_ChatScreen> {
                           Icon(Icons.chat_bubble_outline_rounded,
                               size: 48, color: textSec),
                           const SizedBox(height: 12),
-                          Text('Démarrez la conversation',
+                          Text(l10n.t('start_conversation'),
                               style: TextStyle(color: textSec, fontSize: 14)),
                         ],
                       ),
                     )
                   : ListView.builder(
                       controller: _scrollController,
-                      padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
+                      padding:
+                          const EdgeInsetsDirectional.fromSTEB(16, 16, 16, 8),
                       itemCount: _messages.length,
                       itemBuilder: (context, i) {
                         final msg = _messages[i];
                         final isMe = msg['isMe'] as bool;
                         final isRead = msg['isRead'] as bool;
-
                         return Align(
                           alignment: isMe
                               ? Alignment.centerRight
@@ -1057,7 +1038,6 @@ class _ChatScreenState extends State<_ChatScreen> {
                                             color: isMe
                                                 ? Colors.white70
                                                 : textSec)),
-                                    // ✅ Indicateur lu/non-lu pour les messages envoyés
                                     if (isMe) ...[
                                       const SizedBox(width: 4),
                                       Icon(
@@ -1079,8 +1059,6 @@ class _ChatScreenState extends State<_ChatScreen> {
                       },
                     ),
         ),
-
-        // ── Barre d'envoi ───────────────────────────────────────
         Container(
           padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
           decoration: BoxDecoration(
@@ -1096,11 +1074,11 @@ class _ChatScreenState extends State<_ChatScreen> {
                   child: TextField(
                     controller: _msgController,
                     style: TextStyle(color: textPri),
-                    maxLines: null, // multiline
+                    maxLines: null,
                     textInputAction: TextInputAction.send,
                     onSubmitted: (_) => _sendMessage(),
                     decoration: InputDecoration(
-                      hintText: 'Écrire un message...',
+                      hintText: l10n.t('write_message'),
                       hintStyle: TextStyle(color: textSec, fontSize: 14),
                       border: InputBorder.none,
                       contentPadding: const EdgeInsets.symmetric(

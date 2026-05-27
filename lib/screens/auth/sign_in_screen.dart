@@ -1,11 +1,12 @@
 import 'package:flutter/material.dart';
-import 'package:provider/provider.dart'; // ← ✅ Déjà présent
+import 'package:provider/provider.dart';
 import 'sign_up_screen.dart';
 import '../../main.dart';
 import '../../services/auth_service.dart';
-import '../../providers/app_provider.dart'; // ← ✅ Déjà présent
+import '../../providers/app_provider.dart';
 import '../../theme/app_theme.dart';
 import '../../utils/theme_helper.dart';
+import '../../l10n/app_localizations.dart';
 
 class SignInScreen extends StatefulWidget {
   const SignInScreen({super.key});
@@ -30,29 +31,33 @@ class _SignInScreenState extends State<SignInScreen> {
     super.dispose();
   }
 
-  String? _validateEmail(String? value) {
-    if (value == null || value.isEmpty) return 'Email requis';
+  String? _validateEmail(String? value, AppLocalizations l10n) {
+    if (value == null || value.isEmpty) return l10n.t('email_required');
     if (!value.contains('@') || !value.contains('.')) {
-      return 'Email invalide - doit contenir @ et .';
+      return l10n.t('email_invalid');
     }
     final parts = value.split('@');
     if (parts.length != 2 || parts[0].isEmpty || parts[1].isEmpty) {
-      return 'Email invalide';
+      return l10n.t('email_invalid');
     }
     return null;
   }
 
-  void _signIn() async {
+  Future<void> _signIn() async {
+    final l10n = AppLocalizations.of(context);
     if (!_emailController.text.contains('@') ||
         !_emailController.text.contains('.')) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-            content: Text('Email invalide - doit contenir @ et .'),
-            backgroundColor: Colors.red),
-      );
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+          content: Text(l10n.t('email_invalid')),
+          backgroundColor: Colors.red));
       return;
     }
     if (!_formKey.currentState!.validate()) return;
+
+    final navigator = Navigator.of(context);
+    final messenger = ScaffoldMessenger.of(context);
+    final appProvider = Provider.of<AppProvider>(context, listen: false);
+
     setState(() => _isLoading = true);
 
     try {
@@ -61,50 +66,43 @@ class _SignInScreenState extends State<SignInScreen> {
         password: _passwordController.text,
       );
 
-      if (mounted) {
-        if (result['success'] == true) {
-          final userId = _authService.currentUser?.id;
-          if (userId != null) {
-            final userData = await _authService.getPatientData(userId);
-            if (userData != null && mounted) {
-              Provider.of<AppProvider>(context, listen: false)
-                  .updateProfileFromMap(userData);
-            }
+      if (!mounted) return;
+
+      if (result['success'] == true) {
+        final userId = _authService.currentUser?.id;
+        if (userId != null) {
+          final userData = await _authService.getPatientData(userId);
+          if (!mounted) return;
+          if (userData != null) {
+            appProvider.updateProfileFromMap(userData);
           }
-          
-          // ✅✅✅ NOUVEAU : Initialiser l'état persistant après connexion
-          await Provider.of<AppProvider>(context, listen: false)
-              .initializeAfterAuth();
-          
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-                content: Text('Connexion réussie!'),
-                backgroundColor: Colors.green),
-          );
-          Navigator.of(context).pushReplacement(
-              MaterialPageRoute(builder: (_) => const MainShell()));
-        } else {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-                content: Text(result['error'] ?? 'Erreur de connexion'),
-                backgroundColor: Colors.red,
-                duration: const Duration(seconds: 5)),
-          );
-          setState(() => _isLoading = false);
         }
+
+        await appProvider.initializeAfterAuth();
+        if (!mounted) return;
+
+        navigator.pushReplacement(
+          MaterialPageRoute(builder: (_) => const MainShell()),
+        );
+      } else {
+        if (!mounted) return;
+        setState(() => _isLoading = false);
+        messenger.showSnackBar(SnackBar(
+            content: Text(result['error'] ?? l10n.t('login_error')),
+            backgroundColor: Colors.red,
+            duration: const Duration(seconds: 5)));
       }
     } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text('Erreur: $e'), backgroundColor: Colors.red));
-        setState(() => _isLoading = false);
-      }
+      if (!mounted) return;
+      setState(() => _isLoading = false);
+      messenger.showSnackBar(
+          SnackBar(content: Text('${l10n.t('error_prefix')}$e'), backgroundColor: Colors.red));
     }
   }
 
   @override
   Widget build(BuildContext context) {
-    // ✅ Couleurs dynamiques
+    final l10n = AppLocalizations.of(context);
     final bg = ThemeHelper.primary;
     final surface = ThemeHelper.surface(context);
     final border = ThemeHelper.border(context);
@@ -120,245 +118,240 @@ class _SignInScreenState extends State<SignInScreen> {
       backgroundColor: bg,
       body: SafeArea(
         child: SingleChildScrollView(
-          child: Column(
-            children: [
-              const SizedBox(height: 48),
-              Column(
-                children: [
-                  Container(
-                    width: 72,
-                    height: 72,
-                    decoration: const BoxDecoration(
-                        color: Colors.white, shape: BoxShape.circle),
-                    child: const Icon(Icons.monitor_heart_rounded,
-                        size: 38, color: Color(0xFF1A47C0)),
-                  ),
-                  const SizedBox(height: 16),
-                  const Text('CAREDIFY',
-                      style: TextStyle(
-                          fontSize: 24,
-                          fontWeight: FontWeight.w900,
-                          color: Colors.white,
-                          letterSpacing: 2.5)),
-                  const SizedBox(height: 4),
-                  const Text('Système de télésurveillance cardiaque',
-                      style: TextStyle(fontSize: 13, color: Colors.white70)),
+          child: Column(children: [
+            const SizedBox(height: 48),
+            Column(children: [
+              Container(
+                width: 72,
+                height: 72,
+                decoration: const BoxDecoration(
+                    color: Colors.white, shape: BoxShape.circle),
+                child: const Icon(Icons.monitor_heart_rounded,
+                    size: 38, color: Color(0xFF1A47C0)),
+              ),
+              const SizedBox(height: 16),
+              const Text('CAREDIFY',
+                  style: TextStyle(
+                      fontSize: 24,
+                      fontWeight: FontWeight.w900,
+                      color: Colors.white,
+                      letterSpacing: 2.5)),
+              const SizedBox(height: 4),
+              Text(l10n.t('cardiac_telesurveillance_system'),
+                  style: const TextStyle(fontSize: 13, color: Colors.white70)),
+            ]),
+            const SizedBox(height: 36),
+            Container(
+              margin: const EdgeInsets.symmetric(horizontal: 20),
+              padding: const EdgeInsets.all(28),
+              decoration: BoxDecoration(
+                color: surface,
+                borderRadius: BorderRadius.circular(20),
+                boxShadow: [
+                  BoxShadow(
+                      color: Colors.black.withOpacity(0.15),
+                      blurRadius: 30,
+                      offset: const Offset(0, 10))
                 ],
               ),
-              const SizedBox(height: 36),
-              Container(
-                margin: const EdgeInsets.symmetric(horizontal: 20),
-                padding: const EdgeInsets.all(28),
-                decoration: BoxDecoration(
-                  color: surface,
-                  borderRadius: BorderRadius.circular(20),
-                  boxShadow: [
-                    BoxShadow(
-                        color: Colors.black.withOpacity(0.15),
-                        blurRadius: 30,
-                        offset: const Offset(0, 10))
-                  ],
-                ),
-                child: Form(
-                  key: _formKey,
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      const Text('Bon retour',
-                          style: TextStyle(
-                              fontSize: 22, fontWeight: FontWeight.w800)),
-                      const SizedBox(height: 4),
-                      Text('Connectez-vous pour continuer',
-                          style: TextStyle(fontSize: 13, color: textSecondary)),
-                      const SizedBox(height: 24),
-                      Text('E-mail',
-                          style: TextStyle(
-                              fontSize: 13,
-                              fontWeight: FontWeight.w600,
-                              color: textPrimary)),
-                      const SizedBox(height: 8),
-                      TextFormField(
-                        controller: _emailController,
-                        keyboardType: TextInputType.emailAddress,
-                        style: TextStyle(color: textPrimary),
-                        decoration: _inputDecoration(
-                            hint: 'patient@exemple.fr',
-                            icon: Icons.email_outlined,
-                            textHint: textHint,
-                            inputFill: inputFill,
-                            inputBorder: inputBorder),
-                        validator: _validateEmail,
-                      ),
-                      const SizedBox(height: 18),
-                      Text('Mot de passe',
-                          style: TextStyle(
-                              fontSize: 13,
-                              fontWeight: FontWeight.w600,
-                              color: textPrimary)),
-                      const SizedBox(height: 8),
-                      TextFormField(
-                        controller: _passwordController,
-                        obscureText: _obscurePassword,
-                        style: TextStyle(color: textPrimary),
-                        decoration: _inputDecoration(
-                          hint: '••••••••',
-                          icon: Icons.lock_outline_rounded,
+              child: Form(
+                key: _formKey,
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(l10n.t('hello'),
+                        style: const TextStyle(
+                            fontSize: 22, fontWeight: FontWeight.w800)),
+                    const SizedBox(height: 4),
+                    Text(l10n.t('login_to_continue'),
+                        style: TextStyle(fontSize: 13, color: textSecondary)),
+                    const SizedBox(height: 24),
+
+                    // Email
+                    Text(l10n.t('email'),
+                        style: TextStyle(
+                            fontSize: 13,
+                            fontWeight: FontWeight.w600,
+                            color: textPrimary)),
+                    const SizedBox(height: 8),
+                    TextFormField(
+                      controller: _emailController,
+                      keyboardType: TextInputType.emailAddress,
+                      style: TextStyle(color: textPrimary),
+                      decoration: _inputDecoration(
+                          hint: 'patient@exemple.fr',
+                          icon: Icons.email_outlined,
                           textHint: textHint,
                           inputFill: inputFill,
-                          inputBorder: inputBorder,
-                          suffixIcon: IconButton(
-                            icon: Icon(
-                                _obscurePassword
-                                    ? Icons.visibility_off_outlined
-                                    : Icons.visibility_outlined,
-                                color: textSecondary,
-                                size: 20),
-                            onPressed: () => setState(
-                                () => _obscurePassword = !_obscurePassword),
-                          ),
-                        ),
-                        validator: (v) {
-                          if (v == null || v.isEmpty) {
-                            return 'Mot de passe requis';
-                          }
-                          if (v.length < 6) return 'Minimum 6 caractères';
-                          return null;
-                        },
-                      ),
-                      const SizedBox(height: 14),
-                      Row(
-                        children: [
-                          SizedBox(
-                            width: 20,
-                            height: 20,
-                            child: Checkbox(
-                              value: _rememberMe,
-                              onChanged: (v) =>
-                                  setState(() => _rememberMe = v ?? false),
-                              activeColor: ThemeHelper.primary,
-                              shape: RoundedRectangleBorder(
-                                  borderRadius: BorderRadius.circular(4)),
-                            ),
-                          ),
-                          const SizedBox(width: 8),
-                          Expanded(
-                              child: Text('Se souvenir de moi',
-                                  style: TextStyle(
-                                      fontSize: 9, color: textPrimary),
-                                  overflow: TextOverflow.ellipsis,
-                                  maxLines: 1)),
-                          const Spacer(),
-                          Flexible(
-                            child: GestureDetector(
-                              onTap: () {
-                                ScaffoldMessenger.of(context).showSnackBar(
-                                    const SnackBar(
-                                        content: Text(
-                                            'Fonctionnalité à implémenter')));
-                              },
-                              child: const Text('Mot de passe oublié ?',
-                                  style: TextStyle(
-                                      fontSize: 9,
-                                      fontWeight: FontWeight.w600,
-                                      color: Color(0xFF1A47C0)),
-                                  overflow: TextOverflow.ellipsis,
-                                  maxLines: 1,
-                                  textAlign: TextAlign.end),
-                            ),
-                          ),
-                        ],
-                      ),
-                      const SizedBox(height: 22),
-                      SizedBox(
-                        width: double.infinity,
-                        height: 50,
-                        child: ElevatedButton(
-                          onPressed: _isLoading ? null : _signIn,
-                          style: ElevatedButton.styleFrom(
-                            backgroundColor: ThemeHelper.primary,
-                            foregroundColor: Colors.white,
-                            elevation: 0,
-                            shape: RoundedRectangleBorder(
-                                borderRadius: BorderRadius.circular(10)),
-                          ),
-                          child: _isLoading
-                              ? const SizedBox(
-                                  width: 22,
-                                  height: 22,
-                                  child: CircularProgressIndicator(
-                                      color: Colors.white, strokeWidth: 2.5))
-                              : const Text('Se connecter',
-                                  style: TextStyle(
-                                      fontSize: 13,
-                                      fontWeight: FontWeight.w700)),
+                          inputBorder: inputBorder),
+                      validator: (v) => _validateEmail(v, l10n),
+                    ),
+                    const SizedBox(height: 18),
+
+                    // Mot de passe
+                    Text(l10n.t('password'),
+                        style: TextStyle(
+                            fontSize: 13,
+                            fontWeight: FontWeight.w600,
+                            color: textPrimary)),
+                    const SizedBox(height: 8),
+                    TextFormField(
+                      controller: _passwordController,
+                      obscureText: _obscurePassword,
+                      style: TextStyle(color: textPrimary),
+                      decoration: _inputDecoration(
+                        hint: '••••••••',
+                        icon: Icons.lock_outline_rounded,
+                        textHint: textHint,
+                        inputFill: inputFill,
+                        inputBorder: inputBorder,
+                        suffixIcon: IconButton(
+                          icon: Icon(
+                              _obscurePassword
+                                  ? Icons.visibility_off_outlined
+                                  : Icons.visibility_outlined,
+                              color: textSecondary,
+                              size: 20),
+                          onPressed: () => setState(
+                              () => _obscurePassword = !_obscurePassword),
                         ),
                       ),
-                      const SizedBox(height: 20),
-                      Row(
-                        children: [
-                          Expanded(child: Divider(color: border)),
-                          Padding(
-                              padding:
-                                  const EdgeInsets.symmetric(horizontal: 12),
-                              child: Text('Ou continuer avec',
-                                  style: TextStyle(
-                                      fontSize: 12, color: textSecondary))),
-                          Expanded(child: Divider(color: border)),
-                        ],
-                      ),
-                      const SizedBox(height: 16),
+                      validator: (v) {
+                        if (v == null || v.isEmpty) {
+                          return l10n.t('password_required');
+                        }
+                        if (v.length < 6) return l10n.t('password_min_length');
+                        return null;
+                      },
+                    ),
+                    const SizedBox(height: 14),
+
+                    // Remember me + Forgot password
+                    Row(children: [
                       SizedBox(
-                        width: double.infinity,
-                        height: 48,
-                        child: OutlinedButton.icon(
-                          onPressed: () {
-                            ScaffoldMessenger.of(context).showSnackBar(
-                                const SnackBar(
-                                    content:
-                                        Text('Fonctionnalité à implémenter')));
-                          },
-                          icon: const _GoogleLogo(),
-                          label: Text('Continuer avec Google',
-                              style: TextStyle(
-                                  fontSize: 14,
+                        width: 20,
+                        height: 20,
+                        child: Checkbox(
+                          value: _rememberMe,
+                          onChanged: (v) =>
+                              setState(() => _rememberMe = v ?? false),
+                          activeColor: ThemeHelper.primary,
+                          shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(4)),
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      Expanded(
+                          child: Text(l10n.t('remember_me'),
+                              style: TextStyle(fontSize: 9, color: textPrimary),
+                              overflow: TextOverflow.ellipsis,
+                              maxLines: 1)),
+                      const Spacer(),
+                      Flexible(
+                        child: GestureDetector(
+                          onTap: () => ScaffoldMessenger.of(context)
+                              .showSnackBar(SnackBar(
+                                  content:
+                                      Text(l10n.t('feature_to_implement')))),
+                          child: Text(l10n.t('forgot_password'),
+                              style: const TextStyle(
+                                  fontSize: 9,
                                   fontWeight: FontWeight.w600,
-                                  color: textPrimary)),
-                          style: OutlinedButton.styleFrom(
-                            side: BorderSide(color: inputBorder),
-                            shape: RoundedRectangleBorder(
-                                borderRadius: BorderRadius.circular(10)),
-                          ),
+                                  color: Color(0xFF1A47C0)),
+                              overflow: TextOverflow.ellipsis,
+                              maxLines: 1,
+                              textAlign: TextAlign.end),
                         ),
                       ),
-                      const SizedBox(height: 20),
-                      Center(
-                        child: Column(
-                          children: [
-                            Text('Vous n\'avez pas de compte ?',
-                                style: TextStyle(
-                                    fontSize: 13, color: textSecondary)),
-                            const SizedBox(height: 4),
-                            GestureDetector(
-                              onTap: () {
-                                Navigator.of(context).push(MaterialPageRoute(
-                                    builder: (_) => const SignUpScreen()));
-                              },
-                              child: const Text('Créer un compte',
-                                  style: TextStyle(
-                                      fontSize: 14,
-                                      fontWeight: FontWeight.w700,
-                                      color: Color(0xFF1A47C0))),
-                            ),
-                          ],
+                    ]),
+                    const SizedBox(height: 22),
+
+                    // Bouton connexion
+                    SizedBox(
+                      width: double.infinity,
+                      height: 50,
+                      child: ElevatedButton(
+                        onPressed: _isLoading ? null : _signIn,
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: ThemeHelper.primary,
+                          foregroundColor: Colors.white,
+                          elevation: 0,
+                          shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(10)),
+                        ),
+                        child: _isLoading
+                            ? const SizedBox(
+                                width: 22,
+                                height: 22,
+                                child: CircularProgressIndicator(
+                                    color: Colors.white, strokeWidth: 2.5))
+                            : Text(l10n.t('sign_in'),
+                                style: const TextStyle(
+                                    fontSize: 13, fontWeight: FontWeight.w700)),
+                      ),
+                    ),
+                    const SizedBox(height: 20),
+
+                    // Divider
+                    Row(children: [
+                      Expanded(child: Divider(color: border)),
+                      Padding(
+                          padding: const EdgeInsets.symmetric(horizontal: 12),
+                          child: Text(l10n.t('or_continue_with'),
+                              style: TextStyle(
+                                  fontSize: 12, color: textSecondary))),
+                      Expanded(child: Divider(color: border)),
+                    ]),
+                    const SizedBox(height: 16),
+
+                    // Google
+                    SizedBox(
+                      width: double.infinity,
+                      height: 48,
+                      child: OutlinedButton.icon(
+                        onPressed: () => ScaffoldMessenger.of(context)
+                            .showSnackBar(SnackBar(
+                                content: Text(l10n.t('feature_to_implement')))),
+                        icon: const _GoogleLogo(),
+                        label: Text(l10n.t('continue_with_google'),
+                            style: TextStyle(
+                                fontSize: 14,
+                                fontWeight: FontWeight.w600,
+                                color: textPrimary)),
+                        style: OutlinedButton.styleFrom(
+                          side: BorderSide(color: inputBorder),
+                          shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(10)),
                         ),
                       ),
-                    ],
-                  ),
+                    ),
+                    const SizedBox(height: 20),
+
+                    // Lien inscription
+                    Center(
+                      child: Column(children: [
+                        Text(l10n.t('dont_have_account'),
+                            style:
+                                TextStyle(fontSize: 13, color: textSecondary)),
+                        const SizedBox(height: 4),
+                        GestureDetector(
+                          onTap: () => Navigator.of(context).push(
+                              MaterialPageRoute(
+                                  builder: (_) => const SignUpScreen())),
+                          child: Text(l10n.t('create_account'),
+                              style: const TextStyle(
+                                  fontSize: 14,
+                                  fontWeight: FontWeight.w700,
+                                  color: Color(0xFF1A47C0))),
+                        ),
+                      ]),
+                    ),
+                  ],
                 ),
               ),
-              const SizedBox(height: 40),
-            ],
-          ),
+            ),
+            const SizedBox(height: 40),
+          ]),
         ),
       ),
     );

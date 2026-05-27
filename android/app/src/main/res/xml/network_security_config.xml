@@ -1,0 +1,33 @@
+<?xml version="1.0" encoding="utf-8"?>
+<network-security-config>
+
+    <!-- ✅ Autoriser tout le trafic HTTPS sans restriction -->
+    <base-config cleartextTrafficPermitted="false">
+        <trust-anchors>
+            <certificates src="system"/>
+            <certificates src="user"/>
+        </trust-anchors>
+    </base-config>
+
+    <!-- ✅ Serveurs Overpass — autoriser explicitement -->
+    <domain-config cleartextTrafficPermitted="false">
+        <domain includeSubdomains="true">overpass-api.de</domain>
+        <domain includeSubdomains="true">maps.mail.ru</domain>
+        <domain includeSubdomains="true">overpass.kumi.systems</domain>
+        <domain includeSubdomains="true">nominatim.openstreetmap.org</domain>
+        <domain includeSubdomains="true">tile.openstreetmap.org</domain>
+        <trust-anchors>
+            <certificates src="system"/>
+        </trust-anchors>
+    </domain-config>
+
+    <!-- ✅ Supabase -->
+    <domain-config cleartextTrafficPermitted="false">
+        <domain includeSubdomains="true">supabase.co</domain>
+        <domain includeSubdomains="true">supabase.com</domain>
+        <trust-anchors>
+            <certificates src="system"/>
+        </trust-anchors>
+    </domain-config>
+
+</network-security-config>

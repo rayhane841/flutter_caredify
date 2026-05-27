@@ -9,10 +9,11 @@ import '../widgets/risk_gauge.dart';
 import '../widgets/sensor_indicator.dart';
 import '../painters/ecg_painter.dart';
 import '../services/auth_service.dart';
+import '../l10n/app_localizations.dart';
 import 'history_screen.dart';
 import 'ecg_screen.dart';
 import 'map_screen.dart';
-import 'messages_screen.dart'; // ← import Messages
+import 'messages_screen.dart';
 
 class DashboardScreen extends StatefulWidget {
   const DashboardScreen({super.key});
@@ -68,7 +69,7 @@ class _DashboardScreenState extends State<DashboardScreen>
             if (mounted) setState(() {});
           }
         } catch (e) {
-          print('❌ [DASHBOARD] Error refreshing profile: $e');
+          debugPrint('❌ [DASHBOARD] Error refreshing profile: $e');
         }
       }
     }
@@ -76,6 +77,7 @@ class _DashboardScreenState extends State<DashboardScreen>
 
   @override
   Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context);
     return Consumer<AppProvider>(
       builder: (context, app, _) {
         final bg = ThemeHelper.background(context);
@@ -225,7 +227,7 @@ class _DashboardScreenState extends State<DashboardScreen>
 
                   // ── Actions rapides ─────────────────────
                   Text(
-                    'Actions rapides',
+                    l10n.t('quick_actions'),
                     style: TextStyle(
                       fontSize: 16,
                       fontWeight: FontWeight.w700,
@@ -242,7 +244,7 @@ class _DashboardScreenState extends State<DashboardScreen>
                       mainAxisAlignment: MainAxisAlignment.spaceBetween,
                       children: [
                         Text(
-                          'Dernières mesures',
+                          l10n.t('last_measure'),
                           style: TextStyle(
                             fontSize: 16,
                             fontWeight: FontWeight.w700,
@@ -255,7 +257,7 @@ class _DashboardScreenState extends State<DashboardScreen>
                             MaterialPageRoute(
                                 builder: (_) => const HistoryScreen()),
                           ),
-                          child: Text('Voir tout',
+                          child: Text(l10n.t('see_all'),
                               style: TextStyle(color: primary)),
                         ),
                       ],
@@ -296,6 +298,7 @@ class _AiAlertBanner extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context);
     final isPending = app.emergencyState == EmergencyState.pending;
     final isConfirmed = app.emergencyState == EmergencyState.confirmed;
 
@@ -306,10 +309,10 @@ class _AiAlertBanner extends StatelessWidget {
             : AppColors.critical;
 
     final message = isConfirmed
-        ? '🚨 Urgence confirmée par votre cardiologue'
+        ? l10n.t('alert_confirmed_cardiologist')
         : isPending
-            ? '⚠️ Anomalie détectée — En attente du cardiologue'
-            : '⚠️ Alerte IA active — Voir les messages';
+            ? l10n.t('alert_pending_cardiologist')
+            : l10n.t('alert_ai_active');
 
     return GestureDetector(
       onTap: onTap,
@@ -339,7 +342,7 @@ class _AiAlertBanner extends StatelessWidget {
                 ),
               ),
             ),
-            Icon(Icons.arrow_forward_ios_rounded, color: color, size: 14),
+            Icon(Icons.arrow_forward_rounded, color: color, size: 16),
           ],
         ),
       ),
@@ -357,6 +360,7 @@ class _DisclaimerBanner extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context);
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
       decoration: BoxDecoration(
@@ -374,7 +378,7 @@ class _DisclaimerBanner extends StatelessWidget {
           const SizedBox(width: 8),
           Expanded(
             child: Text(
-              'Prototype académique — Mode simulé',
+              l10n.t('academic_prototype_simulated'),
               style: TextStyle(
                 fontSize: 12,
                 fontWeight: FontWeight.w500,
@@ -407,6 +411,7 @@ class _StatusCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context);
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
@@ -422,7 +427,7 @@ class _StatusCard extends StatelessWidget {
               Icon(Icons.monitor_heart_rounded, size: 18, color: textSecondary),
               const SizedBox(width: 6),
               Text(
-                'Fréquence',
+                l10n.t('frequency'),
                 style: TextStyle(
                   fontSize: 12,
                   color: textSecondary,
@@ -445,9 +450,9 @@ class _StatusCard extends StatelessWidget {
                 ),
               ),
               Padding(
-                padding: const EdgeInsets.only(bottom: 6, left: 4),
+                padding: const EdgeInsetsDirectional.only(bottom: 6, start: 4),
                 child: Text(
-                  'bpm',
+                  l10n.t('bpm'),
                   style: TextStyle(
                     fontSize: 14,
                     fontWeight: FontWeight.w500,
@@ -481,6 +486,7 @@ class _RiskCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context);
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
@@ -491,7 +497,7 @@ class _RiskCard extends StatelessWidget {
       child: Column(
         children: [
           Text(
-            'Score de risque',
+            l10n.t('risk_score'),
             style: TextStyle(
               fontSize: 12,
               color: textSecondary,
@@ -527,6 +533,7 @@ class _EcgPreviewCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context);
     final isConnected = bleStatus == 'connected';
     final ecgBg = isConnected
         ? AppColors.ecgBackground
@@ -537,19 +544,19 @@ class _EcgPreviewCard extends StatelessWidget {
     String subtitle;
     switch (bleStatus) {
       case 'scanning':
-        subtitle = 'Recherche du bracelet...';
+        subtitle = l10n.t('scanning_sensor');
         break;
       case 'connecting':
-        subtitle = 'Connexion en cours...';
+        subtitle = l10n.t('connecting_sensor');
         break;
       case 'connected':
-        subtitle = 'ECG en direct';
+        subtitle = l10n.t('live_ecg');
         break;
       case 'disconnected':
-        subtitle = 'Bracelet déconnecté';
+        subtitle = l10n.t('sensor_disconnected');
         break;
       default:
-        subtitle = 'En attente du bracelet';
+        subtitle = l10n.t('waiting_sensor');
     }
 
     return Container(
@@ -563,7 +570,7 @@ class _EcgPreviewCard extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Padding(
-            padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
+            padding: const EdgeInsetsDirectional.fromSTEB(16, 16, 16, 8),
             child: Row(
               children: [
                 Icon(Icons.show_chart_rounded, size: 18, color: ecgText),
@@ -657,6 +664,7 @@ class _BleStatusCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context);
     Color color;
     IconData icon;
     String title;
@@ -666,32 +674,32 @@ class _BleStatusCard extends StatelessWidget {
       case 'scanning':
         color = const Color(0xFFF59E0B);
         icon = Icons.bluetooth_searching_rounded;
-        title = 'Recherche du bracelet en cours...';
-        subtitle = 'Mettez le bracelet Movesense sur votre poitrine';
+        title = l10n.t('search_sensor_progress');
+        subtitle = l10n.t('put_sensor_chest');
         break;
       case 'connecting':
         color = const Color(0xFFF59E0B);
         icon = Icons.bluetooth_connected_rounded;
-        title = 'Connexion au bracelet Movesense...';
-        subtitle = 'Établissement de la connexion BLE';
+        title = l10n.t('sensor_connecting');
+        subtitle = l10n.t('ble_connecting_subtitle');
         break;
       case 'connected':
         color = AppColors.ecgGreen;
         icon = Icons.bluetooth_connected_rounded;
-        title = 'Bracelet connecté : $deviceName';
-        subtitle = 'ECG en direct • Appuyez pour afficher';
+        title = l10n.t('sensor_connected_title').replaceAll('{name}', deviceName);
+        subtitle = l10n.t('sensor_connected_subtitle');
         break;
       case 'disconnected':
         color = AppColors.critical;
         icon = Icons.bluetooth_disabled_rounded;
-        title = 'Vous êtes déconnecté du bracelet';
-        subtitle = 'Remettez le bracelet pour reprendre automatiquement';
+        title = l10n.t('sensor_disconnected_title');
+        subtitle = l10n.t('sensor_disconnected_subtitle');
         break;
       default: // 'idle'
         color = const Color(0xFF64748B);
         icon = Icons.bluetooth_rounded;
-        title = 'Scan BLE en démarrage...';
-        subtitle = 'Recherche automatique en cours';
+        title = l10n.t('scan_ble_starting');
+        subtitle = l10n.t('auto_scan_progress');
     }
 
     return GestureDetector(
@@ -739,8 +747,7 @@ class _BleStatusCard extends StatelessWidget {
               ),
             ),
             if (bleStatus == 'connected')
-              Icon(Icons.arrow_forward_ios_rounded,
-                  color: color, size: 14),
+              Icon(Icons.arrow_forward_rounded, color: color, size: 16),
             if (bleStatus == 'scanning' || bleStatus == 'connecting')
               SizedBox(
                 width: 16,
@@ -764,23 +771,22 @@ class _QuickActions extends StatelessWidget {
   final Color primary;
   const _QuickActions({required this.primary});
 
-
   @override
   Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context);
     final actions = [
       _QuickAction(
         icon: Icons.show_chart_rounded,
-        label: 'Nouvel ECG',
+        label: l10n.t('new_ecg'),
         color: primary,
         onTap: () => Navigator.push(
           context,
           MaterialPageRoute(builder: (_) => const EcgScreen()),
         ),
       ),
-      // ✅ Messages remplace Urgence
       _QuickAction(
         icon: Icons.message_rounded,
-        label: 'Messages',
+        label: l10n.t('messages'),
         color: const Color(0xFF0EA5E9),
         onTap: () => Navigator.push(
           context,
@@ -789,7 +795,7 @@ class _QuickActions extends StatelessWidget {
       ),
       _QuickAction(
         icon: Icons.map_rounded,
-        label: 'Carte',
+        label: l10n.t('map'),
         color: const Color(0xFF2E7D32),
         onTap: () => Navigator.push(
           context,
@@ -798,7 +804,7 @@ class _QuickActions extends StatelessWidget {
       ),
       _QuickAction(
         icon: Icons.history_rounded,
-        label: 'Historique',
+        label: l10n.t('history'),
         color: const Color(0xFF6A1B9A),
         onTap: () => Navigator.push(
           context,
@@ -875,6 +881,7 @@ class _HistoryItem extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context);
     final statusColor = reading.status == HealthStatus.normal
         ? ThemeHelper.normal(context)
         : reading.status == HealthStatus.suspect
@@ -912,7 +919,7 @@ class _HistoryItem extends StatelessWidget {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  '${reading.heartRate} bpm',
+                  '${reading.heartRate} ${l10n.t('bpm')}',
                   style: TextStyle(
                     fontSize: 15,
                     fontWeight: FontWeight.w700,
@@ -920,7 +927,7 @@ class _HistoryItem extends StatelessWidget {
                   ),
                 ),
                 Text(
-                  _formatDate(reading.timestamp),
+                  _formatDate(reading.timestamp, l10n),
                   style: TextStyle(fontSize: 12, color: textSecondary),
                 ),
               ],
@@ -932,11 +939,11 @@ class _HistoryItem extends StatelessWidget {
     );
   }
 
-  String _formatDate(DateTime date) {
+  String _formatDate(DateTime date, AppLocalizations l10n) {
     final now = DateTime.now();
     final diff = now.difference(date);
-    if (diff.inMinutes < 60) return 'Il y a ${diff.inMinutes} min';
-    if (diff.inHours < 24) return 'Il y a ${diff.inHours}h';
-    return 'Il y a ${diff.inDays}j';
+    if (diff.inMinutes < 60) return l10n.t('ago_minutes').replaceAll('{min}', '${diff.inMinutes}');
+    if (diff.inHours < 24) return l10n.t('ago_hours').replaceAll('{hour}', '${diff.inHours}');
+    return l10n.t('ago_days').replaceAll('{day}', '${diff.inDays}');
   }
 }
