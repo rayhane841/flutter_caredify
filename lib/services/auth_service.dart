@@ -96,7 +96,7 @@ class AuthService {
   }
 
   // ════════════════════════════════════════════════════════
-  // SIGN UP
+  // SIGN UP — ✅ Ajout family_phone
   // ════════════════════════════════════════════════════════
   Future<Map<String, dynamic>> signUp({
     required String email,
@@ -112,6 +112,7 @@ class AuthService {
     required String medicalHistory,
     required String allergies,
     String cardiologist = '',
+    String? familyPhone, // ✅ NOUVEAU
     // ✅ Antécédents cardiaques — step 3
     bool? antecedentInfarctus,
     bool? antecedentTroubleRythme,
@@ -151,6 +152,14 @@ class AuthService {
       final cardiologistId = await _resolveCardiologistId(cardiologist);
       print('✅ [AUTH] cardiologist_id résolu: $cardiologistId');
 
+      // ✅ Formater family_phone avec préfixe +216 si fourni
+      String? formattedFamilyPhone;
+      if (familyPhone != null && familyPhone.trim().isNotEmpty) {
+        final cleanFamilyPhone =
+            familyPhone.replaceAll(RegExp(r'[\s-]'), '').trim();
+        formattedFamilyPhone = '+216$cleanFamilyPhone';
+      }
+
       final patientData = {
         'id': userId,
         'email': email,
@@ -170,6 +179,7 @@ class AuthService {
         'cardiologist': cardiologist,
         'cardiologist_id': cardiologistId,
         'emergency_contact': '',
+        'family_phone': formattedFamilyPhone, // ✅ NOUVEAU
         // ✅ Antécédents cardiaques — noms de colonnes Supabase en français
         'antecedent_infarctus': antecedentInfarctus,
         'antecedent_trouble_rythme': antecedentTroubleRythme,
@@ -205,6 +215,7 @@ class AuthService {
           medicalHistory: medicalHistory,
           allergies: allergies,
           cardiologist: cardiologist,
+          familyPhone: familyPhone, // ✅ NOUVEAU
           antecedentInfarctus: antecedentInfarctus,
           antecedentTroubleRythme: antecedentTroubleRythme,
           antecedentHospitalisation: antecedentHospitalisation,
@@ -243,7 +254,7 @@ class AuthService {
   }
 
   // ════════════════════════════════════════════════════════
-  // RETRY
+  // RETRY — ✅ Ajout family_phone
   // ════════════════════════════════════════════════════════
   Future<Map<String, dynamic>> _retryAfterDatabaseError({
     required String email,
@@ -259,7 +270,7 @@ class AuthService {
     required String medicalHistory,
     required String allergies,
     String cardiologist = '',
-    // ✅ Antécédents cardiaques transmis en retry
+    String? familyPhone, // ✅ NOUVEAU
     bool? antecedentInfarctus,
     bool? antecedentTroubleRythme,
     bool? antecedentHospitalisation,
@@ -296,6 +307,14 @@ class AuthService {
 
       final cardiologistId = await _resolveCardiologistId(cardiologist);
 
+      // ✅ Formater family_phone avec préfixe +216 si fourni
+      String? formattedFamilyPhone;
+      if (familyPhone != null && familyPhone.trim().isNotEmpty) {
+        final cleanFamilyPhone =
+            familyPhone.replaceAll(RegExp(r'[\s-]'), '').trim();
+        formattedFamilyPhone = '+216$cleanFamilyPhone';
+      }
+
       final patientData = {
         'id': userId,
         'email': email,
@@ -315,7 +334,7 @@ class AuthService {
         'cardiologist': cardiologist,
         'cardiologist_id': cardiologistId,
         'emergency_contact': '',
-        // ✅ Antécédents cardiaques — noms de colonnes Supabase en français
+        'family_phone': formattedFamilyPhone, // ✅ NOUVEAU
         'antecedent_infarctus': antecedentInfarctus,
         'antecedent_trouble_rythme': antecedentTroubleRythme,
         'antecedent_hospitalisation': antecedentHospitalisation,

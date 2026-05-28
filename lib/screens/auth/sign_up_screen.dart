@@ -24,6 +24,7 @@ class _SignUpScreenState extends State<SignUpScreen> {
   final _lastNameController = TextEditingController();
   final _emailController = TextEditingController();
   final _phoneController = TextEditingController();
+  final _familyPhoneController = TextEditingController(); // ✅ NOUVEAU
   final _dobController = TextEditingController();
   final _passwordController = TextEditingController();
   final _confirmPasswordController = TextEditingController();
@@ -64,6 +65,7 @@ class _SignUpScreenState extends State<SignUpScreen> {
     _lastNameController.dispose();
     _emailController.dispose();
     _phoneController.dispose();
+    _familyPhoneController.dispose(); // ✅ NOUVEAU
     _dobController.dispose();
     _passwordController.dispose();
     _confirmPasswordController.dispose();
@@ -119,6 +121,16 @@ class _SignUpScreenState extends State<SignUpScreen> {
     return null;
   }
 
+  // ✅ NOUVEAU — Validation optionnelle du numéro famille
+  String? _validateFamilyPhone(String? value, AppLocalizations l10n) {
+    if (value == null || value.trim().isEmpty) return null; // Optionnel
+    final cleanValue = value.replaceAll(RegExp(r'[\s-]'), '');
+    if (!RegExp(r'^[0-9]{8}$').hasMatch(cleanValue)) {
+      return l10n.t('invalid_phone_error');
+    }
+    return null;
+  }
+
   void _nextStep() {
     final l10n = AppLocalizations.of(context);
     if (_currentStep < 3) {
@@ -146,6 +158,15 @@ class _SignUpScreenState extends State<SignUpScreen> {
         if (phoneError != null) {
           ScaffoldMessenger.of(context).showSnackBar(
               SnackBar(content: Text(phoneError), backgroundColor: Colors.red));
+          return;
+        }
+        // ✅ Valider le numéro de famille seulement s'il est rempli
+        final String? familyPhoneError =
+            _validateFamilyPhone(_familyPhoneController.text, l10n);
+        if (familyPhoneError != null) {
+          ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+              content: Text('Numéro de famille: $familyPhoneError'),
+              backgroundColor: Colors.red));
           return;
         }
         final dateRegex = RegExp(r'^\d{2}/\d{2}/\d{4}$');
@@ -328,6 +349,9 @@ class _SignUpScreenState extends State<SignUpScreen> {
       final cleanPhone = _phoneController.text.replaceAll(RegExp(r'[\s-]'), '');
       final tunisianPhone = '+216$cleanPhone';
 
+      // ✅ Préparer le numéro famille (optionnel)
+      final familyPhoneRaw = _familyPhoneController.text.trim();
+
       final result = await _authService.signUp(
         email: _emailController.text.trim(),
         password: password,
@@ -342,7 +366,8 @@ class _SignUpScreenState extends State<SignUpScreen> {
         medicalHistory: _medicalHistoryController.text,
         allergies: _allergiesController.text,
         cardiologist: _selectedCardiologistLabel ?? '',
-        // ✅ Antécédents cardiaques — step 3
+        familyPhone:
+            familyPhoneRaw.isEmpty ? null : familyPhoneRaw, // ✅ NOUVEAU
         antecedentInfarctus: _hadInfarctus,
         antecedentTroubleRythme: _hadRhythmDisorder,
         antecedentHospitalisation: _hadHospitalization,
@@ -566,67 +591,61 @@ class _SignUpScreenState extends State<SignUpScreen> {
           inputFill: inputFill,
           inputBorder: inputBorder),
       const SizedBox(height: 16),
+
+      // ── Numéro patient ──
       Text('${l10n.t('phone')} *',
           style: TextStyle(
               fontSize: 13, fontWeight: FontWeight.w600, color: textPrimary)),
       const SizedBox(height: 8),
-      Row(children: [
-        Container(
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 14),
-            decoration: BoxDecoration(
-                color: inputFill,
-                borderRadius: const BorderRadiusDirectional.only(
-                    topStart: Radius.circular(10),
-                    bottomStart: Radius.circular(10)),
-                border: Border.all(color: inputBorder)),
-            child: const Text('+216',
-                style: TextStyle(fontSize: 15, fontWeight: FontWeight.w600))),
-        Expanded(
-            child: TextFormField(
-                controller: _phoneController,
-                keyboardType: TextInputType.phone,
-                maxLength: 8,
-                style: TextStyle(color: textPrimary),
-                decoration: InputDecoration(
-                    hintText: 'XX XXX XXX',
-                    hintStyle: TextStyle(color: textHint, fontSize: 14),
-                    prefixIcon: const Icon(Icons.phone_outlined, size: 18),
-                    filled: true,
-                    fillColor: inputFill,
-                    contentPadding: const EdgeInsets.symmetric(
-                        horizontal: 16, vertical: 14),
-                    border: OutlineInputBorder(
-                        borderRadius: const BorderRadius.only(
-                            topRight: Radius.circular(10),
-                            bottomRight: Radius.circular(10)),
-                        borderSide: BorderSide(color: inputBorder)),
-                    enabledBorder: OutlineInputBorder(
-                        borderRadius: const BorderRadius.only(
-                            topRight: Radius.circular(10),
-                            bottomRight: Radius.circular(10)),
-                        borderSide: BorderSide(color: inputBorder)),
-                    focusedBorder: const OutlineInputBorder(
-                        borderRadius: BorderRadius.only(
-                            topRight: Radius.circular(10),
-                            bottomRight: Radius.circular(10)),
-                        borderSide:
-                            BorderSide(color: Color(0xFF1A47C0), width: 1.5)),
-                    errorBorder: const OutlineInputBorder(
-                        borderRadius: BorderRadius.only(
-                            topRight: Radius.circular(10),
-                            bottomRight: Radius.circular(10)),
-                        borderSide: BorderSide(color: Color(0xFFE53935))),
-                    counterText: ''),
-                validator: (v) => _validatePhone(v, l10n),
-                onChanged: (value) {
-                  final cleanValue = value.replaceAll(RegExp(r'[\s-]'), '');
-                  if (cleanValue.length > 8) {
-                    _phoneController.text = cleanValue.substring(0, 8);
-                    _phoneController.selection = TextSelection.fromPosition(
-                        const TextPosition(offset: 8));
-                  }
-                })),
-      ]),
+      _buildPhoneRow(
+        controller: _phoneController,
+        hint: 'XX XXX XXX',
+        textPrimary: textPrimary,
+        textHint: textHint,
+        textSecondary: textSecondary,
+        inputFill: inputFill,
+        inputBorder: inputBorder,
+        validator: (v) => _validatePhone(v, l10n),
+        onChanged: (value) {
+          final cleanValue = value.replaceAll(RegExp(r'[\s-]'), '');
+          if (cleanValue.length > 8) {
+            _phoneController.text = cleanValue.substring(0, 8);
+            _phoneController.selection =
+                TextSelection.fromPosition(TextPosition(offset: 8));
+          }
+        },
+      ),
+
+      const SizedBox(height: 16),
+
+      // ✅ NOUVEAU — Numéro de famille (optionnel)
+      Text('Numéro de famille',
+          style: TextStyle(
+              fontSize: 13, fontWeight: FontWeight.w600, color: textPrimary)),
+      const SizedBox(height: 4),
+      Text('Optionnel — sera contacté en cas d\'urgence',
+          style: TextStyle(
+              fontSize: 11, color: textSecondary, fontStyle: FontStyle.italic)),
+      const SizedBox(height: 8),
+      _buildPhoneRow(
+        controller: _familyPhoneController,
+        hint: 'XX XXX XXX',
+        textPrimary: textPrimary,
+        textHint: textHint,
+        textSecondary: textSecondary,
+        inputFill: inputFill,
+        inputBorder: inputBorder,
+        validator: (v) => _validateFamilyPhone(v, l10n),
+        onChanged: (value) {
+          final cleanValue = value.replaceAll(RegExp(r'[\s-]'), '');
+          if (cleanValue.length > 8) {
+            _familyPhoneController.text = cleanValue.substring(0, 8);
+            _familyPhoneController.selection =
+                TextSelection.fromPosition(const TextPosition(offset: 8));
+          }
+        },
+      ),
+
       const SizedBox(height: 16),
       _buildTextField(
           label: '${l10n.t('birth_date')} *',
@@ -709,6 +728,70 @@ class _SignUpScreenState extends State<SignUpScreen> {
                       const Icon(Icons.arrow_forward_rounded, size: 18)
                     ]))),
     ]));
+  }
+
+  // ✅ NOUVEAU — Widget réutilisable pour les champs téléphone +216
+  Widget _buildPhoneRow({
+    required TextEditingController controller,
+    required String hint,
+    required Color textPrimary,
+    required Color textHint,
+    required Color textSecondary,
+    required Color inputFill,
+    required Color inputBorder,
+    required String? Function(String?) validator,
+    required void Function(String) onChanged,
+  }) {
+    return Row(children: [
+      Container(
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 14),
+          decoration: BoxDecoration(
+              color: inputFill,
+              borderRadius: const BorderRadiusDirectional.only(
+                  topStart: Radius.circular(10),
+                  bottomStart: Radius.circular(10)),
+              border: Border.all(color: inputBorder)),
+          child: const Text('+216',
+              style: TextStyle(fontSize: 15, fontWeight: FontWeight.w600))),
+      Expanded(
+          child: TextFormField(
+              controller: controller,
+              keyboardType: TextInputType.phone,
+              maxLength: 8,
+              style: TextStyle(color: textPrimary),
+              decoration: InputDecoration(
+                  hintText: hint,
+                  hintStyle: TextStyle(color: textHint, fontSize: 14),
+                  prefixIcon: const Icon(Icons.phone_outlined, size: 18),
+                  filled: true,
+                  fillColor: inputFill,
+                  contentPadding:
+                      const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+                  border: OutlineInputBorder(
+                      borderRadius: const BorderRadius.only(
+                          topRight: Radius.circular(10),
+                          bottomRight: Radius.circular(10)),
+                      borderSide: BorderSide(color: inputBorder)),
+                  enabledBorder: OutlineInputBorder(
+                      borderRadius: const BorderRadius.only(
+                          topRight: Radius.circular(10),
+                          bottomRight: Radius.circular(10)),
+                      borderSide: BorderSide(color: inputBorder)),
+                  focusedBorder: const OutlineInputBorder(
+                      borderRadius: BorderRadius.only(
+                          topRight: Radius.circular(10),
+                          bottomRight: Radius.circular(10)),
+                      borderSide:
+                          BorderSide(color: Color(0xFF1A47C0), width: 1.5)),
+                  errorBorder: const OutlineInputBorder(
+                      borderRadius: BorderRadius.only(
+                          topRight: Radius.circular(10),
+                          bottomRight: Radius.circular(10)),
+                      borderSide: BorderSide(color: Color(0xFFE53935))),
+                  counterText: ''),
+              validator: validator,
+              onChanged: onChanged)),
+    ]);
   }
 
   Widget _buildStep2InsideCard(Color surface, Color border, Color textPrimary,

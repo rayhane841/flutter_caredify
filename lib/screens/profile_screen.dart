@@ -62,17 +62,40 @@ class _ProfileScreenState extends State<ProfileScreen> {
     return null;
   }
 
+  // ✅ Validation optionnelle pour family_phone
+  String? _validateFamilyPhone(String? value, AppLocalizations l10n) {
+    if (value == null || value.trim().isEmpty) return null; // Optionnel
+    final cleanValue =
+        value.replaceAll(RegExp(r'[\s+-]'), '').replaceAll('+216', '');
+    if (!RegExp(r'^[0-9]{8}$').hasMatch(cleanValue)) {
+      return l10n.t('invalid_phone_error');
+    }
+    return null;
+  }
+
   void _showEditProfileDialog(BuildContext context) {
     if (_patientData == null) return;
     final l10n = AppLocalizations.of(context);
+
     final nameController =
         TextEditingController(text: _patientData?['name'] ?? '');
+
+    // Numéro patient
     final rawPhone = _patientData?['phone'] ?? '';
     final cleanPhone = rawPhone
         .toString()
         .replaceAll(RegExp(r'[\s+-]'), '')
         .replaceAll('+216', '');
     final phoneController = TextEditingController(text: cleanPhone);
+
+    // ✅ Numéro famille — nettoyage du préfixe +216
+    final rawFamilyPhone = _patientData?['family_phone'] ?? '';
+    final cleanFamilyPhone = rawFamilyPhone
+        .toString()
+        .replaceAll(RegExp(r'[\s+-]'), '')
+        .replaceAll('+216', '');
+    final familyPhoneController = TextEditingController(text: cleanFamilyPhone);
+
     final bloodTypeController =
         TextEditingController(text: _patientData?['blood_type'] ?? '');
     final cardiologistController =
@@ -94,6 +117,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
           final border = ThemeHelper.border(context);
           final textPrimary = ThemeHelper.textPrimary(context);
           final textSecondary = ThemeHelper.textSecondary(context);
+          final inputFill = surfaceVariant(context);
+
           return AlertDialog(
             backgroundColor: surface,
             title: Text(l10n.t('edit_profile'),
@@ -101,7 +126,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
             content: SingleChildScrollView(
               child: Column(
                 mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
+                  // ── Nom complet ──
                   TextField(
                       controller: nameController,
                       style: TextStyle(color: textPrimary),
@@ -115,93 +142,113 @@ class _ProfileScreenState extends State<ProfileScreen> {
                               borderSide:
                                   BorderSide(color: ThemeHelper.primary)))),
                   const SizedBox(height: 12),
+
+                  // ── Numéro patient ──
                   Text(l10n.t('phone'),
-                      style:
-                          const TextStyle(fontSize: 13, fontWeight: FontWeight.w600)),
+                      style: TextStyle(
+                          fontSize: 13,
+                          fontWeight: FontWeight.w600,
+                          color: textPrimary)),
                   const SizedBox(height: 8),
-                  Row(children: [
-                    Container(
-                        padding: const EdgeInsets.symmetric(
-                            horizontal: 12, vertical: 14),
-                        decoration: BoxDecoration(
-                            color: surfaceVariant(context),
-                            borderRadius: const BorderRadius.only(
-                                topLeft: Radius.circular(10),
-                                bottomLeft: Radius.circular(10)),
-                            border: Border.all(color: border)),
-                        child: const Text('+216',
-                            style: TextStyle(
-                                fontSize: 15, fontWeight: FontWeight.w600))),
-                    Expanded(
-                        child: TextFormField(
-                            controller: phoneController,
-                            keyboardType: TextInputType.phone,
-                            maxLength: 8,
-                            style: TextStyle(color: textPrimary),
-                            decoration: InputDecoration(
-                                hintText: 'XX XXX XXX',
-                                hintStyle: TextStyle(
-                                    color: textSecondary, fontSize: 14),
-                                filled: true,
-                                fillColor: surfaceVariant(context),
-                                contentPadding: const EdgeInsets.symmetric(
-                                    horizontal: 16, vertical: 14),
-                                border: const OutlineInputBorder(
-                                    borderRadius: BorderRadius.only(
-                                        topRight: Radius.circular(10),
-                                        bottomRight: Radius.circular(10)),
-                                    borderSide:
-                                        BorderSide(color: AppColors.border)),
-                                enabledBorder: const OutlineInputBorder(
-                                    borderRadius: BorderRadius.only(
-                                        topRight: Radius.circular(10),
-                                        bottomRight: Radius.circular(10)),
-                                    borderSide:
-                                        BorderSide(color: AppColors.border)),
-                                focusedBorder: const OutlineInputBorder(
-                                    borderRadius: BorderRadius.only(
-                                        topRight: Radius.circular(10),
-                                        bottomRight: Radius.circular(10)),
-                                    borderSide: BorderSide(
-                                        color: Color(0xFF1A47C0), width: 1.5)),
-                                counterText: ''),
-                            validator: (v) => _validateTunisianPhone(v, l10n)))
-                  ]),
+                  _buildPhoneRow(
+                    controller: phoneController,
+                    textPrimary: textPrimary,
+                    textSecondary: textSecondary,
+                    inputFill: inputFill,
+                    border: border,
+                  ),
                   const SizedBox(height: 12),
+
+                  // ✅ Numéro de famille (optionnel)
+                  Text('Numéro de famille',
+                      style: TextStyle(
+                          fontSize: 13,
+                          fontWeight: FontWeight.w600,
+                          color: textPrimary)),
+                  const SizedBox(height: 4),
+                  Text('Optionnel — sera contacté en cas d\'urgence',
+                      style: TextStyle(
+                          fontSize: 11,
+                          color: textSecondary,
+                          fontStyle: FontStyle.italic)),
+                  const SizedBox(height: 8),
+                  _buildPhoneRow(
+                    controller: familyPhoneController,
+                    textPrimary: textPrimary,
+                    textSecondary: textSecondary,
+                    inputFill: inputFill,
+                    border: border,
+                    hint: 'XX XXX XXX (optionnel)',
+                  ),
+                  const SizedBox(height: 12),
+
+                  // ── Groupe sanguin ──
                   TextField(
                       controller: bloodTypeController,
                       style: TextStyle(color: textPrimary),
                       decoration: InputDecoration(
                           labelText: l10n.t('blood_type'),
                           border: const OutlineInputBorder(),
-                          labelStyle: TextStyle(color: textSecondary))),
+                          labelStyle: TextStyle(color: textSecondary),
+                          enabledBorder: OutlineInputBorder(
+                              borderSide: BorderSide(color: border)),
+                          focusedBorder: OutlineInputBorder(
+                              borderSide:
+                                  BorderSide(color: ThemeHelper.primary)))),
                   const SizedBox(height: 12),
+
+                  // ── Cardiologue ──
                   TextField(
                       controller: cardiologistController,
                       style: TextStyle(color: textPrimary),
                       decoration: InputDecoration(
                           labelText: l10n.t('my_cardiologist'),
                           border: const OutlineInputBorder(),
-                          labelStyle: TextStyle(color: textSecondary))),
+                          labelStyle: TextStyle(color: textSecondary),
+                          enabledBorder: OutlineInputBorder(
+                              borderSide: BorderSide(color: border)),
+                          focusedBorder: OutlineInputBorder(
+                              borderSide:
+                                  BorderSide(color: ThemeHelper.primary)))),
                   const SizedBox(height: 12),
-                  TextField(
-                      controller: weightController,
-                      style: TextStyle(color: textPrimary),
-                      decoration: InputDecoration(
-                          labelText: l10n.t('weight'),
-                          border: const OutlineInputBorder(),
-                          labelStyle: TextStyle(color: textSecondary)),
-                      keyboardType: TextInputType.number),
+
+                  // ── Poids / Taille ──
+                  Row(children: [
+                    Expanded(
+                      child: TextField(
+                          controller: weightController,
+                          style: TextStyle(color: textPrimary),
+                          decoration: InputDecoration(
+                              labelText: l10n.t('weight'),
+                              border: const OutlineInputBorder(),
+                              labelStyle: TextStyle(color: textSecondary),
+                              enabledBorder: OutlineInputBorder(
+                                  borderSide: BorderSide(color: border)),
+                              focusedBorder: OutlineInputBorder(
+                                  borderSide:
+                                      BorderSide(color: ThemeHelper.primary))),
+                          keyboardType: TextInputType.number),
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: TextField(
+                          controller: heightController,
+                          style: TextStyle(color: textPrimary),
+                          decoration: InputDecoration(
+                              labelText: l10n.t('height'),
+                              border: const OutlineInputBorder(),
+                              labelStyle: TextStyle(color: textSecondary),
+                              enabledBorder: OutlineInputBorder(
+                                  borderSide: BorderSide(color: border)),
+                              focusedBorder: OutlineInputBorder(
+                                  borderSide:
+                                      BorderSide(color: ThemeHelper.primary))),
+                          keyboardType: TextInputType.number),
+                    ),
+                  ]),
                   const SizedBox(height: 12),
-                  TextField(
-                      controller: heightController,
-                      style: TextStyle(color: textPrimary),
-                      decoration: InputDecoration(
-                          labelText: l10n.t('height'),
-                          border: const OutlineInputBorder(),
-                          labelStyle: TextStyle(color: textSecondary)),
-                      keyboardType: TextInputType.number),
-                  const SizedBox(height: 12),
+
+                  // ── Antécédents ──
                   TextField(
                       controller: medicalHistoryController,
                       style: TextStyle(color: textPrimary),
@@ -209,9 +256,16 @@ class _ProfileScreenState extends State<ProfileScreen> {
                           labelText: l10n.t('history'),
                           border: const OutlineInputBorder(),
                           alignLabelWithHint: true,
-                          labelStyle: TextStyle(color: textSecondary)),
+                          labelStyle: TextStyle(color: textSecondary),
+                          enabledBorder: OutlineInputBorder(
+                              borderSide: BorderSide(color: border)),
+                          focusedBorder: OutlineInputBorder(
+                              borderSide:
+                                  BorderSide(color: ThemeHelper.primary))),
                       maxLines: 2),
                   const SizedBox(height: 12),
+
+                  // ── Allergies ──
                   TextField(
                       controller: allergiesController,
                       style: TextStyle(color: textPrimary),
@@ -219,7 +273,12 @@ class _ProfileScreenState extends State<ProfileScreen> {
                           labelText: l10n.t('allergies'),
                           border: const OutlineInputBorder(),
                           alignLabelWithHint: true,
-                          labelStyle: TextStyle(color: textSecondary)),
+                          labelStyle: TextStyle(color: textSecondary),
+                          enabledBorder: OutlineInputBorder(
+                              borderSide: BorderSide(color: border)),
+                          focusedBorder: OutlineInputBorder(
+                              borderSide:
+                                  BorderSide(color: ThemeHelper.primary))),
                       maxLines: 2),
                 ],
               ),
@@ -227,9 +286,11 @@ class _ProfileScreenState extends State<ProfileScreen> {
             actions: [
               TextButton(
                   onPressed: () => Navigator.pop(context),
-                  child: Text(l10n.t('cancel'), style: TextStyle(color: textPrimary))),
+                  child: Text(l10n.t('cancel'),
+                      style: TextStyle(color: textPrimary))),
               ElevatedButton(
                   onPressed: () async {
+                    // Validation numéro patient
                     final phoneError =
                         _validateTunisianPhone(phoneController.text, l10n);
                     if (phoneError != null) {
@@ -238,14 +299,32 @@ class _ProfileScreenState extends State<ProfileScreen> {
                           backgroundColor: Colors.red));
                       return;
                     }
+                    // ✅ Validation numéro famille (optionnel)
+                    final familyPhoneError =
+                        _validateFamilyPhone(familyPhoneController.text, l10n);
+                    if (familyPhoneError != null) {
+                      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+                          content: Text('Numéro de famille: $familyPhoneError'),
+                          backgroundColor: Colors.red));
+                      return;
+                    }
+
                     final userId = _authService.currentUser?.id;
                     if (userId != null) {
                       final cleanPhone =
                           phoneController.text.replaceAll(RegExp(r'[\s-]'), '');
+
+                      // ✅ Préparer family_phone avec préfixe +216
+                      final familyRaw = familyPhoneController.text.trim();
+                      final String? formattedFamilyPhone = familyRaw.isEmpty
+                          ? null
+                          : '+216${familyRaw.replaceAll(RegExp(r'[\s-]'), '')}';
+
                       final success = await _authService
                           .updateProfile(userId: userId, updates: {
                         'name': nameController.text.trim(),
-                        'phone': cleanPhone,
+                        'phone': '+216$cleanPhone',
+                        'family_phone': formattedFamilyPhone, // ✅ NOUVEAU
                         'blood_type': bloodTypeController.text.trim(),
                         'cardiologist': cardiologistController.text.trim(),
                         'weight':
@@ -253,15 +332,13 @@ class _ProfileScreenState extends State<ProfileScreen> {
                         'height':
                             double.tryParse(heightController.text) ?? 170.0,
                         'medical_history': medicalHistoryController.text.trim(),
-                        'allergies': allergiesController.text.trim()
+                        'allergies': allergiesController.text.trim(),
                       });
                       if (success && mounted) {
                         Navigator.pop(context);
                         _loadPatientData();
-                        ScaffoldMessenger.of(context).showSnackBar(
-                            SnackBar(
-                                content:
-                                    Text(l10n.t('profile_updated_success'))));
+                        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+                            content: Text(l10n.t('profile_updated_success'))));
                       }
                     }
                   },
@@ -271,6 +348,60 @@ class _ProfileScreenState extends State<ProfileScreen> {
         },
       ),
     );
+  }
+
+  // ✅ Widget réutilisable champ téléphone +216
+  Widget _buildPhoneRow({
+    required TextEditingController controller,
+    required Color textPrimary,
+    required Color textSecondary,
+    required Color inputFill,
+    required Color border,
+    String hint = 'XX XXX XXX',
+  }) {
+    return Row(children: [
+      Container(
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 14),
+          decoration: BoxDecoration(
+              color: inputFill,
+              borderRadius: const BorderRadius.only(
+                  topLeft: Radius.circular(10),
+                  bottomLeft: Radius.circular(10)),
+              border: Border.all(color: border)),
+          child: const Text('+216',
+              style: TextStyle(fontSize: 15, fontWeight: FontWeight.w600))),
+      Expanded(
+          child: TextFormField(
+              controller: controller,
+              keyboardType: TextInputType.phone,
+              maxLength: 8,
+              style: TextStyle(color: textPrimary),
+              decoration: InputDecoration(
+                  hintText: hint,
+                  hintStyle: TextStyle(color: textSecondary, fontSize: 14),
+                  prefixIcon: const Icon(Icons.phone_outlined, size: 18),
+                  filled: true,
+                  fillColor: inputFill,
+                  contentPadding:
+                      const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+                  border: const OutlineInputBorder(
+                      borderRadius: BorderRadius.only(
+                          topRight: Radius.circular(10),
+                          bottomRight: Radius.circular(10)),
+                      borderSide: BorderSide(color: AppColors.border)),
+                  enabledBorder: const OutlineInputBorder(
+                      borderRadius: BorderRadius.only(
+                          topRight: Radius.circular(10),
+                          bottomRight: Radius.circular(10)),
+                      borderSide: BorderSide(color: AppColors.border)),
+                  focusedBorder: const OutlineInputBorder(
+                      borderRadius: BorderRadius.only(
+                          topRight: Radius.circular(10),
+                          bottomRight: Radius.circular(10)),
+                      borderSide:
+                          BorderSide(color: Color(0xFF1A47C0), width: 1.5)),
+                  counterText: ''))),
+    ]);
   }
 
   void _showLogoutDialog(BuildContext context) {
@@ -287,19 +418,15 @@ class _ProfileScreenState extends State<ProfileScreen> {
         actions: [
           TextButton(
               onPressed: () => Navigator.pop(context),
-              child: Text(l10n.t('cancel'), style: TextStyle(color: textPrimary))),
+              child:
+                  Text(l10n.t('cancel'), style: TextStyle(color: textPrimary))),
           ElevatedButton(
               onPressed: () async {
-                // ✅ Nettoyer l'état persistant AVANT déconnexion
                 final app = Provider.of<AppProvider>(context, listen: false);
                 await app.onLogout();
-                
-                // Déconnecter de Supabase
                 await _authService.signOut();
-                
                 if (context.mounted) {
                   Navigator.pop(context);
-                  // Supprimer TOUTES les routes et aller à SignIn
                   Navigator.of(context)
                       .pushNamedAndRemoveUntil('/signin', (route) => false);
                 }
@@ -364,6 +491,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                     padding: const EdgeInsets.all(16),
                     child: Column(
                       children: [
+                        // ── En-tête profil ──
                         Container(
                             width: double.infinity,
                             padding: const EdgeInsets.all(24),
@@ -432,6 +560,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
                                       ]))
                             ])),
                         const SizedBox(height: 16),
+
+                        // ── Infos personnelles ──
                         _SectionCard(
                             title: l10n.t('personal_info'),
                             icon: Icons.person_outline_rounded,
@@ -441,19 +571,30 @@ class _ProfileScreenState extends State<ProfileScreen> {
                             children: [
                               _InfoRow(
                                   label: l10n.t('full_name'),
-                                  value: _getSafeString(_patientData?['name'], l10n),
+                                  value: _getSafeString(
+                                      _patientData?['name'], l10n),
                                   textPrimary: textPrimary,
                                   textSecondary: textSecondary),
                               _InfoRow(
                                   label: l10n.t('email'),
-                                  value: _getSafeString(_patientData?['email'], l10n),
+                                  value: _getSafeString(
+                                      _patientData?['email'], l10n),
                                   textPrimary: textPrimary,
                                   textSecondary: textSecondary),
                               _InfoRow(
                                   label: l10n.t('phone'),
-                                  value: _getSafeString(_patientData?['phone'], l10n),
+                                  value: _getSafeString(
+                                      _patientData?['phone'], l10n),
                                   textPrimary: textPrimary,
                                   textSecondary: textSecondary),
+                              // ✅ Numéro famille affiché ici
+                              _InfoRow(
+                                  label: 'Tél. famille',
+                                  value: _getSafeString(
+                                      _patientData?['family_phone'], l10n),
+                                  textPrimary: textPrimary,
+                                  textSecondary: textSecondary,
+                                  isEmergency: true),
                               _InfoRow(
                                   label: l10n.t('birth_date'),
                                   value: _getSafeString(
@@ -462,11 +603,14 @@ class _ProfileScreenState extends State<ProfileScreen> {
                                   textSecondary: textSecondary),
                               _InfoRow(
                                   label: l10n.t('age'),
-                                  value: '${_patientData?['age'] ?? '?'} ${l10n.t('age_years')}',
+                                  value:
+                                      '${_patientData?['age'] ?? '?'} ${l10n.t('age_years')}',
                                   textPrimary: textPrimary,
-                                  textSecondary: textSecondary)
+                                  textSecondary: textSecondary),
                             ]),
                         const SizedBox(height: 12),
+
+                        // ── Infos médicales ──
                         _SectionCard(
                             title: l10n.t('medical_info'),
                             icon: Icons.medical_services_outlined,
@@ -507,9 +651,11 @@ class _ProfileScreenState extends State<ProfileScreen> {
                                   value: _getSafeString(
                                       _patientData?['allergies'], l10n),
                                   textPrimary: textPrimary,
-                                  textSecondary: textSecondary)
+                                  textSecondary: textSecondary),
                             ]),
                         const SizedBox(height: 12),
+
+                        // ── Cardiologue ──
                         _SectionCard(
                             title: l10n.t('my_cardiologist'),
                             icon: Icons.medical_services_rounded,
@@ -532,9 +678,11 @@ class _ProfileScreenState extends State<ProfileScreen> {
                                   label: l10n.t('next_appointment'),
                                   value: l10n.t('april_15_2026'),
                                   textPrimary: textPrimary,
-                                  textSecondary: textSecondary)
+                                  textSecondary: textSecondary),
                             ]),
                         const SizedBox(height: 12),
+
+                        // ── Notifications ──
                         _MenuItemCard(
                             icon: Icons.notifications_outlined,
                             title: l10n.t('notifications'),
@@ -551,6 +699,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
                             surface: surface,
                             border: border),
                         const SizedBox(height: 12),
+
+                        // ── Paramètres ──
                         _MenuItemCard(
                             icon: Icons.settings_outlined,
                             title: l10n.t('settings_title'),
@@ -566,6 +716,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
                             surface: surface,
                             border: border),
                         const SizedBox(height: 24),
+
+                        // ── Déconnexion ──
                         Container(
                             width: double.infinity,
                             padding: const EdgeInsets.all(16),
@@ -600,7 +752,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
   }
 }
 
-// Helper pour surfaceVariant dynamique
+// ── Helper surfaceVariant ──
 Color surfaceVariant(BuildContext context) => ThemeHelper.getColor(
     context, AppColors.surfaceVariant, AppColors.darkSurfaceVariant);
 
@@ -704,11 +856,17 @@ class _SectionCard extends StatelessWidget {
 class _InfoRow extends StatelessWidget {
   final String label, value;
   final Color textPrimary, textSecondary;
-  const _InfoRow(
-      {required this.label,
-      required this.value,
-      required this.textPrimary,
-      required this.textSecondary});
+  // ✅ Paramètre optionnel pour afficher le badge urgence
+  final bool isEmergency;
+
+  const _InfoRow({
+    required this.label,
+    required this.value,
+    required this.textPrimary,
+    required this.textSecondary,
+    this.isEmergency = false,
+  });
+
   @override
   Widget build(BuildContext context) {
     return Padding(
@@ -716,11 +874,24 @@ class _InfoRow extends StatelessWidget {
         child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
           SizedBox(
               width: 110,
-              child: Text(label,
-                  style: TextStyle(
-                      fontSize: 13,
-                      color: textSecondary,
-                      fontWeight: FontWeight.w500))),
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.center,
+                children: [
+                  Flexible(
+                    child: Text(label,
+                        style: TextStyle(
+                            fontSize: 13,
+                            color: textSecondary,
+                            fontWeight: FontWeight.w500)),
+                  ),
+                  // ✅ Petite icône urgence à côté du label famille
+                  if (isEmergency) ...[
+                    const SizedBox(width: 4),
+                    const Icon(Icons.emergency_rounded,
+                        size: 12, color: Colors.orange),
+                  ]
+                ],
+              )),
           Expanded(
               child: Text(value,
                   style: TextStyle(

@@ -69,8 +69,8 @@
 		<key>UIStatusBarHidden</key>
 		<false/>
 		<key>NSLocationWhenInUseUsageDescription</key>
-        <string>CAREDIFY a besoin de votre position pour les urgences cardiaques</string>
-        <key>NSLocationAlwaysUsageDescription</key>
-        <string>CAREDIFY utilise votre position en arrière-plan pour alerter les secours</string>
+		<string>CAREDIFY a besoin de votre position pour les urgences cardiaques</string>
+		<key>NSLocationAlwaysUsageDescription</key>
+		<string>CAREDIFY utilise votre position en arrière-plan pour alerter les secours</string>
 	</dict>
 </plist>

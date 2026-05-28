@@ -33,30 +33,25 @@ class _SplashScreenState extends State<SplashScreen>
     );
     _controller.forward();
 
-    // ✅ Vérifier l'authentification et naviguer
     _checkAuthAndNavigate();
   }
 
   Future<void> _checkAuthAndNavigate() async {
-    // Attendre l'animation du splash
     await Future.delayed(const Duration(milliseconds: 2000));
-    
+
     if (!mounted) return;
-    
+
     final app = Provider.of<AppProvider>(context, listen: false);
     final supabase = Supabase.instance.client;
-    
-    // ✅ Vérifier si l'utilisateur a une session active (Supabase persiste automatiquement)
+
     final session = supabase.auth.currentSession;
     final user = supabase.auth.currentUser;
-    
+
     if (session != null && user != null) {
       print('✅ [SPLASH] User authenticated: ${user.email}');
-      
-      // ✅ Initialiser l'état persistant (profil + monitoring)
+
       await app.initializeAfterAuth();
-      
-      // ✅ Naviguer vers MainShell
+
       if (mounted) {
         Navigator.of(context).pushReplacement(
           PageRouteBuilder(
@@ -69,7 +64,6 @@ class _SplashScreenState extends State<SplashScreen>
       }
     } else {
       print('🔹 [SPLASH] No active session');
-      // ✅ Naviguer vers SignIn
       if (mounted) {
         Navigator.of(context).pushReplacement(
           PageRouteBuilder(
@@ -101,9 +95,10 @@ class _SplashScreenState extends State<SplashScreen>
             child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
+                // ✅ Logo image remplace l'icône
                 Container(
-                  width: 88,
-                  height: 88,
+                  width: 110,
+                  height: 110,
                   decoration: BoxDecoration(
                     color: Colors.white,
                     shape: BoxShape.circle,
@@ -115,10 +110,10 @@ class _SplashScreenState extends State<SplashScreen>
                       ),
                     ],
                   ),
-                  child: const Icon(
-                    Icons.monitor_heart_rounded,
-                    size: 46,
-                    color: Color(0xFF1A47C0),
+                  padding: const EdgeInsets.all(14),
+                  child: Image.asset(
+                    'assets/logo.png',
+                    fit: BoxFit.contain,
                   ),
                 ),
                 const SizedBox(height: 28),
