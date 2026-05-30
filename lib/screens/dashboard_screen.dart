@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 import '../providers/app_provider.dart';
 import '../theme/app_theme.dart';
 import '../utils/theme_helper.dart';
@@ -27,6 +28,9 @@ class _DashboardScreenState extends State<DashboardScreen>
   final _authService = AuthService();
   bool _profileRefreshed = false;
 
+  // ✅ Channel Realtime pour confirmation ECG
+  RealtimeChannel? _ecgConfirmChannel;
+
   @override
   void initState() {
     super.initState();
@@ -34,19 +38,21 @@ class _DashboardScreenState extends State<DashboardScreen>
       duration: const Duration(milliseconds: 1500),
       vsync: this,
     )..repeat();
+
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (mounted && !_profileRefreshed) _refreshProfileIfNeeded();
-      // ── Démarrage automatique du scan BLE dès l'ouverture du dashboard ──
       final app = Provider.of<AppProvider>(context, listen: false);
-      if (app.bleStatus == 'idle') {
-        app.startAutoScan();
-      }
+      if (app.bleStatus == 'idle') app.startAutoScan();
+      // ✅ Démarrer le listener ECG confirmation
+      _subscribeToEcgConfirmation();
     });
   }
 
   @override
   void dispose() {
     _ecgController.dispose();
+    // ✅ Nettoyer le channel Realtime
+    _ecgConfirmChannel?.unsubscribe();
     super.dispose();
   }
 
@@ -73,6 +79,105 @@ class _DashboardScreenState extends State<DashboardScreen>
         }
       }
     }
+  }
+
+  // ✅ Listener Realtime : cardiologue confirme une alerte ECG → dialog patient
+  void _subscribeToEcgConfirmation() {
+    final userId = _authService.currentUser?.id;
+    if (userId == null) return;
+
+    _ecgConfirmChannel = Supabase.instance.client
+        .channel('ecg_confirm_$userId')
+        .onPostgresChanges(
+          event: PostgresChangeEvent.update,
+          schema: 'public',
+          table: 'ecg_readings',
+          filter: PostgresChangeFilter(
+            type: PostgresChangeFilterType.eq,
+            column: 'patient_id',
+            value: userId,
+          ),
+          callback: (payload) {
+            final confirmedAt = payload.newRecord['confirmed_at'];
+            final note = payload.newRecord['cardiologist_note'] as String?;
+            // Déclencher le dialog seulement si confirmed_at vient d'être rempli
+            if (confirmedAt != null && mounted) {
+              _showEcgConfirmationDialog(note);
+            }
+          },
+        )
+        .subscribe();
+
+    debugPrint(
+        '✅ [DASHBOARD] Realtime ECG confirmation subscribed for $userId');
+  }
+
+  // ✅ Dialog affiché au patient quand le cardiologue confirme l'alerte ECG
+  void _showEcgConfirmationDialog(String? note) {
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (_) => AlertDialog(
+        backgroundColor: const Color(0xFF0F1623),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        title: const Row(children: [
+          Icon(Icons.check_circle_rounded, color: Color(0xFF10B981), size: 22),
+          SizedBox(width: 8),
+          Flexible(
+            child: Text('Alerte prise en charge',
+                style: TextStyle(color: Colors.white, fontSize: 16)),
+          ),
+        ]),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text(
+              'Votre cardiologue a confirmé votre alerte ECG et suit votre situation de près.',
+              style:
+                  TextStyle(color: Colors.white70, height: 1.5, fontSize: 13),
+            ),
+            if (note != null && note.isNotEmpty) ...[
+              const SizedBox(height: 14),
+              Container(
+                width: double.infinity,
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: const Color(0xFF10B981).withOpacity(0.1),
+                  borderRadius: BorderRadius.circular(10),
+                  border: Border.all(
+                      color: const Color(0xFF10B981).withOpacity(0.3)),
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text('📋 Note médicale',
+                        style: TextStyle(
+                            color: Color(0xFF10B981),
+                            fontSize: 11,
+                            fontWeight: FontWeight.bold)),
+                    const SizedBox(height: 6),
+                    Text(note,
+                        style: const TextStyle(
+                            color: Colors.white, fontSize: 13, height: 1.5)),
+                  ],
+                ),
+              ),
+            ],
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('OK',
+                style: TextStyle(
+                    color: Color(0xFF0EA5E9),
+                    fontWeight: FontWeight.bold,
+                    fontSize: 15)),
+          ),
+        ],
+      ),
+    );
   }
 
   @override
@@ -156,24 +261,15 @@ class _DashboardScreenState extends State<DashboardScreen>
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  // ── Bannière disclaimer ─────────────────
                   _DisclaimerBanner(textPrimary: textPri, primary: primary),
                   const SizedBox(height: 12),
-
-                  // ── Carte statut BLE Movesense (toujours visible) ────
                   _BleStatusCard(
                     bleStatus: app.bleStatus,
                     deviceName: app.connectedDeviceName,
-                    onTapEcg: () => Navigator.push(
-                      context,
-                      MaterialPageRoute(
-                        builder: (_) => const EcgScreen(),
-                      ),
-                    ),
+                    onTapEcg: () => Navigator.push(context,
+                        MaterialPageRoute(builder: (_) => const EcgScreen())),
                   ),
                   const SizedBox(height: 12),
-
-                  // ── Bannière alerte IA active ───────────
                   if (app.aiAlertPending ||
                       app.emergencyState != EmergencyState.none)
                     _AiAlertBanner(
@@ -181,16 +277,12 @@ class _DashboardScreenState extends State<DashboardScreen>
                       onTap: () => Navigator.push(
                         context,
                         MaterialPageRoute(
-                          builder: (_) => const MessagesScreen(),
-                        ),
+                            builder: (_) => const MessagesScreen()),
                       ),
                     ),
-
                   if (app.aiAlertPending ||
                       app.emergencyState != EmergencyState.none)
                     const SizedBox(height: 12),
-
-                  // ── Cartes statut + risque ──────────────
                   Row(
                     children: [
                       Expanded(
@@ -213,19 +305,16 @@ class _DashboardScreenState extends State<DashboardScreen>
                     ],
                   ),
                   const SizedBox(height: 16),
-
-                  // ── ECG preview ─────────────────────────
                   _EcgPreviewCard(
                     controller: _ecgController,
                     isMonitoring: app.isMonitoring,
                     bleStatus: app.bleStatus,
-                    realEcgData: app.realEcgData.isEmpty ? null : app.realEcgData,
+                    realEcgData:
+                        app.realEcgData.isEmpty ? null : app.realEcgData,
                     textPrimary: textPri,
                     border: border,
                   ),
                   const SizedBox(height: 16),
-
-                  // ── Actions rapides ─────────────────────
                   Text(
                     l10n.t('quick_actions'),
                     style: TextStyle(
@@ -237,8 +326,6 @@ class _DashboardScreenState extends State<DashboardScreen>
                   const SizedBox(height: 12),
                   _QuickActions(primary: primary),
                   const SizedBox(height: 16),
-
-                  // ── Historique ──────────────────────────
                   if (app.history.isNotEmpty) ...[
                     Row(
                       mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -285,16 +372,12 @@ class _DashboardScreenState extends State<DashboardScreen>
 }
 
 // ══════════════════════════════════════════════════════════
-// Bannière alerte IA active
+// Bannière alerte IA active (inchangée)
 // ══════════════════════════════════════════════════════════
 class _AiAlertBanner extends StatelessWidget {
   final AppProvider app;
   final VoidCallback onTap;
-
-  const _AiAlertBanner({
-    required this.app,
-    required this.onTap,
-  });
+  const _AiAlertBanner({required this.app, required this.onTap});
 
   @override
   Widget build(BuildContext context) {
@@ -324,38 +407,28 @@ class _AiAlertBanner extends StatelessWidget {
           borderRadius: BorderRadius.circular(12),
           border: Border.all(color: color.withOpacity(0.4)),
         ),
-        child: Row(
-          children: [
-            Icon(
-              isConfirmed ? Icons.emergency_rounded : Icons.warning_rounded,
-              color: color,
-              size: 20,
-            ),
-            const SizedBox(width: 10),
-            Expanded(
-              child: Text(
-                message,
-                style: TextStyle(
-                  color: color,
-                  fontWeight: FontWeight.w700,
-                  fontSize: 13,
-                ),
-              ),
-            ),
-            Icon(Icons.arrow_forward_rounded, color: color, size: 16),
-          ],
-        ),
+        child: Row(children: [
+          Icon(isConfirmed ? Icons.emergency_rounded : Icons.warning_rounded,
+              color: color, size: 20),
+          const SizedBox(width: 10),
+          Expanded(
+              child: Text(message,
+                  style: TextStyle(
+                      color: color,
+                      fontWeight: FontWeight.w700,
+                      fontSize: 13))),
+          Icon(Icons.arrow_forward_rounded, color: color, size: 16),
+        ]),
       ),
     );
   }
 }
 
 // ══════════════════════════════════════════════════════════
-// Disclaimer Banner
+// Disclaimer Banner (inchangée)
 // ══════════════════════════════════════════════════════════
 class _DisclaimerBanner extends StatelessWidget {
-  final Color textPrimary;
-  final Color primary;
+  final Color textPrimary, primary;
   const _DisclaimerBanner({required this.textPrimary, required this.primary});
 
   @override
@@ -365,41 +438,31 @@ class _DisclaimerBanner extends StatelessWidget {
       padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
       decoration: BoxDecoration(
         color: ThemeHelper.getColor(
-          context,
-          const Color(0xFFE3EDFB),
-          AppColors.darkSurfaceVariant,
-        ),
+            context, const Color(0xFFE3EDFB), AppColors.darkSurfaceVariant),
         borderRadius: BorderRadius.circular(10),
         border: Border.all(color: primary.withOpacity(0.2)),
       ),
-      child: Row(
-        children: [
-          Icon(Icons.info_outline, size: 16, color: primary),
-          const SizedBox(width: 8),
-          Expanded(
+      child: Row(children: [
+        Icon(Icons.info_outline, size: 16, color: primary),
+        const SizedBox(width: 8),
+        Expanded(
             child: Text(
-              l10n.t('academic_prototype_simulated'),
-              style: TextStyle(
-                fontSize: 12,
-                fontWeight: FontWeight.w500,
-                color: primary,
-              ),
-            ),
-          ),
-        ],
-      ),
+          l10n.t('academic_prototype_simulated'),
+          style: TextStyle(
+              fontSize: 12, fontWeight: FontWeight.w500, color: primary),
+        )),
+      ]),
     );
   }
 }
 
 // ══════════════════════════════════════════════════════════
-// Status Card
+// Status Card (inchangée)
 // ══════════════════════════════════════════════════════════
 class _StatusCard extends StatelessWidget {
   final HealthStatus status;
   final int heartRate;
   final Color textPrimary, textSecondary, surface, border;
-
   const _StatusCard({
     required this.status,
     required this.heartRate,
@@ -419,64 +482,46 @@ class _StatusCard extends StatelessWidget {
         borderRadius: BorderRadius.circular(16),
         border: Border.all(color: border),
       ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              Icon(Icons.monitor_heart_rounded, size: 18, color: textSecondary),
-              const SizedBox(width: 6),
-              Text(
-                l10n.t('frequency'),
-                style: TextStyle(
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Row(children: [
+          Icon(Icons.monitor_heart_rounded, size: 18, color: textSecondary),
+          const SizedBox(width: 6),
+          Text(l10n.t('frequency'),
+              style: TextStyle(
                   fontSize: 12,
                   color: textSecondary,
-                  fontWeight: FontWeight.w500,
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 10),
-          Row(
-            crossAxisAlignment: CrossAxisAlignment.end,
-            children: [
-              Text(
-                '$heartRate',
-                style: TextStyle(
+                  fontWeight: FontWeight.w500)),
+        ]),
+        const SizedBox(height: 10),
+        Row(crossAxisAlignment: CrossAxisAlignment.end, children: [
+          Text('$heartRate',
+              style: TextStyle(
                   fontSize: 40,
                   fontWeight: FontWeight.w800,
                   color: textPrimary,
-                  letterSpacing: -1,
-                ),
-              ),
-              Padding(
-                padding: const EdgeInsetsDirectional.only(bottom: 6, start: 4),
-                child: Text(
-                  l10n.t('bpm'),
-                  style: TextStyle(
+                  letterSpacing: -1)),
+          Padding(
+            padding: const EdgeInsetsDirectional.only(bottom: 6, start: 4),
+            child: Text(l10n.t('bpm'),
+                style: TextStyle(
                     fontSize: 14,
                     fontWeight: FontWeight.w500,
-                    color: textSecondary,
-                  ),
-                ),
-              ),
-            ],
+                    color: textSecondary)),
           ),
-          const SizedBox(height: 10),
-          StatusBadge(status: status),
-        ],
-      ),
+        ]),
+        const SizedBox(height: 10),
+        StatusBadge(status: status),
+      ]),
     );
   }
 }
 
 // ══════════════════════════════════════════════════════════
-// Risk Card
+// Risk Card (inchangée)
 // ══════════════════════════════════════════════════════════
 class _RiskCard extends StatelessWidget {
   final int riskScore;
   final Color textSecondary, surface, border;
-
   const _RiskCard({
     required this.riskScore,
     required this.textSecondary,
@@ -494,26 +539,21 @@ class _RiskCard extends StatelessWidget {
         borderRadius: BorderRadius.circular(16),
         border: Border.all(color: border),
       ),
-      child: Column(
-        children: [
-          Text(
-            l10n.t('risk_score'),
+      child: Column(children: [
+        Text(l10n.t('risk_score'),
             style: TextStyle(
-              fontSize: 12,
-              color: textSecondary,
-              fontWeight: FontWeight.w500,
-            ),
-          ),
-          const SizedBox(height: 8),
-          RiskGauge(score: riskScore, size: 120),
-        ],
-      ),
+                fontSize: 12,
+                color: textSecondary,
+                fontWeight: FontWeight.w500)),
+        const SizedBox(height: 8),
+        RiskGauge(score: riskScore, size: 120),
+      ]),
     );
   }
 }
 
 // ══════════════════════════════════════════════════════════
-// ECG Preview Card
+// ECG Preview Card (inchangée)
 // ══════════════════════════════════════════════════════════
 class _EcgPreviewCard extends StatelessWidget {
   final AnimationController controller;
@@ -535,12 +575,10 @@ class _EcgPreviewCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final l10n = AppLocalizations.of(context);
     final isConnected = bleStatus == 'connected';
-    final ecgBg = isConnected
-        ? AppColors.ecgBackground
-        : ThemeHelper.background(context);
+    final ecgBg =
+        isConnected ? AppColors.ecgBackground : ThemeHelper.background(context);
     final ecgText = isConnected ? AppColors.ecgGreen : textPrimary;
 
-    // Sous-titre dynamique selon l'état BLE
     String subtitle;
     switch (bleStatus) {
       case 'scanning':
@@ -566,44 +604,34 @@ class _EcgPreviewCard extends StatelessWidget {
         border: Border.all(color: border),
       ),
       clipBehavior: Clip.hardEdge,
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Padding(
-            padding: const EdgeInsetsDirectional.fromSTEB(16, 16, 16, 8),
-            child: Row(
-              children: [
-                Icon(Icons.show_chart_rounded, size: 18, color: ecgText),
-                const SizedBox(width: 6),
-                Text(
-                  subtitle,
-                  style: TextStyle(
-                    fontSize: 14,
-                    fontWeight: FontWeight.w600,
-                    color: ecgText,
-                  ),
-                ),
-                if (isConnected) ...[const SizedBox(width: 8), _LiveDot()],
-              ],
-            ),
-          ),
-          AnimatedBuilder(
-            animation: controller,
-            builder: (context, _) => SizedBox(
-              height: 100,
-              child: CustomPaint(
-                painter: EcgPainter(
-                  phase: controller.value * 4,
-                  isLive: isConnected,
-                  realEcgData: realEcgData,
-                ),
-                size: const Size(double.infinity, 100),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Padding(
+          padding: const EdgeInsetsDirectional.fromSTEB(16, 16, 16, 8),
+          child: Row(children: [
+            Icon(Icons.show_chart_rounded, size: 18, color: ecgText),
+            const SizedBox(width: 6),
+            Text(subtitle,
+                style: TextStyle(
+                    fontSize: 14, fontWeight: FontWeight.w600, color: ecgText)),
+            if (isConnected) ...[const SizedBox(width: 8), _LiveDot()],
+          ]),
+        ),
+        AnimatedBuilder(
+          animation: controller,
+          builder: (context, _) => SizedBox(
+            height: 100,
+            child: CustomPaint(
+              painter: EcgPainter(
+                phase: controller.value * 4,
+                isLive: isConnected,
+                realEcgData: realEcgData,
               ),
+              size: const Size(double.infinity, 100),
             ),
           ),
-          const SizedBox(height: 12),
-        ],
-      ),
+        ),
+        const SizedBox(height: 12),
+      ]),
     );
   }
 }
@@ -616,14 +644,12 @@ class _LiveDot extends StatefulWidget {
 class _LiveDotState extends State<_LiveDot>
     with SingleTickerProviderStateMixin {
   late AnimationController _c;
-
   @override
   void initState() {
     super.initState();
     _c = AnimationController(
-      duration: const Duration(milliseconds: 800),
-      vsync: this,
-    )..repeat(reverse: true);
+        duration: const Duration(milliseconds: 800), vsync: this)
+      ..repeat(reverse: true);
   }
 
   @override
@@ -649,13 +675,11 @@ class _LiveDotState extends State<_LiveDot>
 }
 
 // ══════════════════════════════════════════════════════════
-// Carte de statut BLE Movesense (Dashboard)
+// BLE Status Card (inchangée)
 // ══════════════════════════════════════════════════════════
 class _BleStatusCard extends StatelessWidget {
-  final String bleStatus;
-  final String deviceName;
+  final String bleStatus, deviceName;
   final VoidCallback onTapEcg;
-
   const _BleStatusCard({
     required this.bleStatus,
     required this.deviceName,
@@ -667,8 +691,7 @@ class _BleStatusCard extends StatelessWidget {
     final l10n = AppLocalizations.of(context);
     Color color;
     IconData icon;
-    String title;
-    String subtitle;
+    String title, subtitle;
 
     switch (bleStatus) {
       case 'scanning':
@@ -686,7 +709,8 @@ class _BleStatusCard extends StatelessWidget {
       case 'connected':
         color = AppColors.ecgGreen;
         icon = Icons.bluetooth_connected_rounded;
-        title = l10n.t('sensor_connected_title').replaceAll('{name}', deviceName);
+        title =
+            l10n.t('sensor_connected_title').replaceAll('{name}', deviceName);
         subtitle = l10n.t('sensor_connected_subtitle');
         break;
       case 'disconnected':
@@ -695,7 +719,7 @@ class _BleStatusCard extends StatelessWidget {
         title = l10n.t('sensor_disconnected_title');
         subtitle = l10n.t('sensor_disconnected_subtitle');
         break;
-      default: // 'idle'
+      default:
         color = const Color(0xFF64748B);
         icon = Icons.bluetooth_rounded;
         title = l10n.t('scan_ble_starting');
@@ -711,61 +735,46 @@ class _BleStatusCard extends StatelessWidget {
           borderRadius: BorderRadius.circular(12),
           border: Border.all(color: color.withOpacity(0.35)),
         ),
-        child: Row(
-          children: [
-            Container(
+        child: Row(children: [
+          Container(
               width: 38,
               height: 38,
               decoration: BoxDecoration(
-                color: color.withOpacity(0.15),
-                borderRadius: BorderRadius.circular(10),
-              ),
-              child: Icon(icon, color: color, size: 20),
-            ),
-            const SizedBox(width: 12),
-            Expanded(
+                  color: color.withOpacity(0.15),
+                  borderRadius: BorderRadius.circular(10)),
+              child: Icon(icon, color: color, size: 20)),
+          const SizedBox(width: 12),
+          Expanded(
               child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    title,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                Text(title,
                     style: TextStyle(
-                      color: color,
-                      fontSize: 13,
-                      fontWeight: FontWeight.w700,
-                    ),
-                  ),
-                  const SizedBox(height: 2),
-                  Text(
-                    subtitle,
+                        color: color,
+                        fontSize: 13,
+                        fontWeight: FontWeight.w700)),
+                const SizedBox(height: 2),
+                Text(subtitle,
                     style: TextStyle(
-                      color: color.withOpacity(0.75),
-                      fontSize: 11,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-            if (bleStatus == 'connected')
-              Icon(Icons.arrow_forward_rounded, color: color, size: 16),
-            if (bleStatus == 'scanning' || bleStatus == 'connecting')
-              SizedBox(
+                        color: color.withOpacity(0.75), fontSize: 11)),
+              ])),
+          if (bleStatus == 'connected')
+            Icon(Icons.arrow_forward_rounded, color: color, size: 16),
+          if (bleStatus == 'scanning' || bleStatus == 'connecting')
+            SizedBox(
                 width: 16,
                 height: 16,
                 child: CircularProgressIndicator(
-                  strokeWidth: 2,
-                  valueColor: AlwaysStoppedAnimation<Color>(color),
-                ),
-              ),
-          ],
-        ),
+                    strokeWidth: 2,
+                    valueColor: AlwaysStoppedAnimation<Color>(color))),
+        ]),
       ),
     );
   }
 }
 
 // ══════════════════════════════════════════════════════════
-// Quick Actions — Messages remplace Urgence
+// Quick Actions (inchangée)
 // ══════════════════════════════════════════════════════════
 class _QuickActions extends StatelessWidget {
   final Color primary;
@@ -776,77 +785,60 @@ class _QuickActions extends StatelessWidget {
     final l10n = AppLocalizations.of(context);
     final actions = [
       _QuickAction(
-        icon: Icons.show_chart_rounded,
-        label: l10n.t('new_ecg'),
-        color: primary,
-        onTap: () => Navigator.push(
-          context,
-          MaterialPageRoute(builder: (_) => const EcgScreen()),
-        ),
-      ),
+          icon: Icons.show_chart_rounded,
+          label: l10n.t('new_ecg'),
+          color: primary,
+          onTap: () => Navigator.push(
+              context, MaterialPageRoute(builder: (_) => const EcgScreen()))),
       _QuickAction(
-        icon: Icons.message_rounded,
-        label: l10n.t('messages'),
-        color: const Color(0xFF0EA5E9),
-        onTap: () => Navigator.push(
-          context,
-          MaterialPageRoute(builder: (_) => const MessagesScreen()),
-        ),
-      ),
+          icon: Icons.message_rounded,
+          label: l10n.t('messages'),
+          color: const Color(0xFF0EA5E9),
+          onTap: () => Navigator.push(context,
+              MaterialPageRoute(builder: (_) => const MessagesScreen()))),
       _QuickAction(
-        icon: Icons.map_rounded,
-        label: l10n.t('map'),
-        color: const Color(0xFF2E7D32),
-        onTap: () => Navigator.push(
-          context,
-          MaterialPageRoute(builder: (_) => const MapScreen()),
-        ),
-      ),
+          icon: Icons.map_rounded,
+          label: l10n.t('map'),
+          color: const Color(0xFF2E7D32),
+          onTap: () => Navigator.push(
+              context, MaterialPageRoute(builder: (_) => const MapScreen()))),
       _QuickAction(
-        icon: Icons.history_rounded,
-        label: l10n.t('history'),
-        color: const Color(0xFF6A1B9A),
-        onTap: () => Navigator.push(
-          context,
-          MaterialPageRoute(builder: (_) => const HistoryScreen()),
-        ),
-      ),
+          icon: Icons.history_rounded,
+          label: l10n.t('history'),
+          color: const Color(0xFF6A1B9A),
+          onTap: () => Navigator.push(context,
+              MaterialPageRoute(builder: (_) => const HistoryScreen()))),
     ];
 
     return Row(
-      children: actions.map((a) {
-        return Expanded(
-          child: Padding(
-            padding: const EdgeInsets.only(right: 8),
-            child: GestureDetector(
-              onTap: a.onTap,
-              child: Container(
-                padding: const EdgeInsets.symmetric(vertical: 16),
-                decoration: BoxDecoration(
-                  color: a.color.withOpacity(0.08),
-                  borderRadius: BorderRadius.circular(14),
-                  border: Border.all(color: a.color.withOpacity(0.2)),
-                ),
-                child: Column(
-                  children: [
-                    Icon(a.icon, color: a.color, size: 26),
-                    const SizedBox(height: 6),
-                    Text(
-                      a.label,
-                      style: TextStyle(
-                        fontSize: 10,
-                        fontWeight: FontWeight.w600,
-                        color: a.color,
+      children: actions
+          .map((a) => Expanded(
+                child: Padding(
+                  padding: const EdgeInsets.only(right: 8),
+                  child: GestureDetector(
+                    onTap: a.onTap,
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(vertical: 16),
+                      decoration: BoxDecoration(
+                        color: a.color.withOpacity(0.08),
+                        borderRadius: BorderRadius.circular(14),
+                        border: Border.all(color: a.color.withOpacity(0.2)),
                       ),
-                      textAlign: TextAlign.center,
+                      child: Column(children: [
+                        Icon(a.icon, color: a.color, size: 26),
+                        const SizedBox(height: 6),
+                        Text(a.label,
+                            style: TextStyle(
+                                fontSize: 10,
+                                fontWeight: FontWeight.w600,
+                                color: a.color),
+                            textAlign: TextAlign.center),
+                      ]),
                     ),
-                  ],
+                  ),
                 ),
-              ),
-            ),
-          ),
-        );
-      }).toList(),
+              ))
+          .toList(),
     );
   }
 }
@@ -856,21 +848,19 @@ class _QuickAction {
   final String label;
   final Color color;
   final VoidCallback? onTap;
-  _QuickAction({
-    required this.icon,
-    required this.label,
-    required this.color,
-    this.onTap,
-  });
+  _QuickAction(
+      {required this.icon,
+      required this.label,
+      required this.color,
+      this.onTap});
 }
 
 // ══════════════════════════════════════════════════════════
-// History Item
+// History Item (inchangée)
 // ══════════════════════════════════════════════════════════
 class _HistoryItem extends StatelessWidget {
   final EcgReading reading;
   final Color textPrimary, textSecondary, surface, border;
-
   const _HistoryItem({
     required this.reading,
     required this.textPrimary,
@@ -901,49 +891,38 @@ class _HistoryItem extends StatelessWidget {
         borderRadius: BorderRadius.circular(12),
         border: Border.all(color: border),
       ),
-      child: Row(
-        children: [
-          Container(
+      child: Row(children: [
+        Container(
             width: 42,
             height: 42,
             decoration: BoxDecoration(
-              color: statusBg,
-              borderRadius: BorderRadius.circular(10),
-            ),
+                color: statusBg, borderRadius: BorderRadius.circular(10)),
+            child: Icon(Icons.monitor_heart_rounded,
+                size: 22, color: statusColor)),
+        const SizedBox(width: 12),
+        Expanded(
             child:
-                Icon(Icons.monitor_heart_rounded, size: 22, color: statusColor),
-          ),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  '${reading.heartRate} ${l10n.t('bpm')}',
-                  style: TextStyle(
-                    fontSize: 15,
-                    fontWeight: FontWeight.w700,
-                    color: textPrimary,
-                  ),
-                ),
-                Text(
-                  _formatDate(reading.timestamp, l10n),
-                  style: TextStyle(fontSize: 12, color: textSecondary),
-                ),
-              ],
-            ),
-          ),
-          StatusBadge(status: reading.status),
-        ],
-      ),
+                Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Text('${reading.heartRate} ${l10n.t('bpm')}',
+              style: TextStyle(
+                  fontSize: 15,
+                  fontWeight: FontWeight.w700,
+                  color: textPrimary)),
+          Text(_formatDate(reading.timestamp, l10n),
+              style: TextStyle(fontSize: 12, color: textSecondary)),
+        ])),
+        StatusBadge(status: reading.status),
+      ]),
     );
   }
 
   String _formatDate(DateTime date, AppLocalizations l10n) {
     final now = DateTime.now();
     final diff = now.difference(date);
-    if (diff.inMinutes < 60) return l10n.t('ago_minutes').replaceAll('{min}', '${diff.inMinutes}');
-    if (diff.inHours < 24) return l10n.t('ago_hours').replaceAll('{hour}', '${diff.inHours}');
+    if (diff.inMinutes < 60)
+      return l10n.t('ago_minutes').replaceAll('{min}', '${diff.inMinutes}');
+    if (diff.inHours < 24)
+      return l10n.t('ago_hours').replaceAll('{hour}', '${diff.inHours}');
     return l10n.t('ago_days').replaceAll('{day}', '${diff.inDays}');
   }
 }

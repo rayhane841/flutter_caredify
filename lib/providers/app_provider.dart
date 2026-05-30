@@ -7,6 +7,8 @@ import '../models/ecg_reading.dart';
 import '../models/patient_profile.dart';
 import '../services/auth_service.dart';
 import '../services/ble_service.dart';
+import '../services/ble_service_auto.dart'; // ← Ajout de l'import
+import '../services/ecg_supabase_service.dart';
 
 class Position {
   final double latitude;
@@ -65,7 +67,15 @@ class AppProvider extends ChangeNotifier {
   final AuthService _authService = AuthService();
   AuthService get authService => _authService;
 
-  final BleService _bleService = BleService();
+  // ✅ Utiliser BleServiceAuto (qui va basculer sur le mock après 10s si pas de bracelet)
+  final BleServiceAuto _bleService = BleServiceAuto();
+  
+  // Expose le mode courant à l'UI (optionnel)
+  BleMode get bleMode => _bleService.currentMode;
+
+  // ✅ Service d'enregistrement automatique ECG → Supabase (toutes les 30 s)
+  final EcgSupabaseService _ecgSupabaseService = EcgSupabaseService();
+
   List<double> _realEcgData = [];
   String _bleStatus = 'idle';
   String _connectedDeviceName = '';
@@ -109,6 +119,27 @@ class AppProvider extends ChangeNotifier {
   AppProvider() {
     _loadData();
     _listenToConnectionState();
+    
+    // 🚀 Démarrage automatique de la détection (scan 10 s → real ou mock)
+    _bleService.autoInitialize().then((mode) {
+      debugPrint('[APP] Mode BLE choisi: ${mode.name}');
+      // En mode mock, le stream est déjà actif → on s'y abonne directement
+      if (mode == BleMode.mock) {
+        _bleStatus = 'connected';
+        _connectedDeviceName = _bleService.connectedDeviceName;
+        _isMonitoring = true;
+        _subscribeToEcgStream();
+        
+        // On lance l'enregistrement avec isMockMode = true (limité à 5 inserts)
+        _ecgSupabaseService.start(
+          getPatientId: () => _authService.currentUser?.id,
+          getEcgValues: () => List<double>.from(_realEcgData),
+          getHeartRate: () => _heartRate,
+          isMockMode: true,
+        );
+        notifyListeners();
+      }
+    });
   }
 
   void _listenToConnectionState() {
@@ -148,24 +179,16 @@ class AppProvider extends ChangeNotifier {
           _isMonitoring = true;
           notifyListeners();
           await _bleService.startECGStream(device.id);
-          _ecgSubscription = _bleService.ecgDataStream.listen((rawData) {
-            final doubles = rawData.map((v) => v / 1000.0).toList();
-            for (final point in doubles) {
-              _realEcgData.add(point);
-              if (_realEcgData.length > 500) _realEcgData.removeAt(0);
-            }
-            if (rawData.length >= 2) {
-              final flags = rawData[0];
-              final isHr16bit = (flags & 0x01) != 0;
-              if (!isHr16bit && rawData[1] > 20 && rawData[1] < 250) {
-                _heartRate = rawData[1];
-              } else if (isHr16bit && rawData.length >= 3) {
-                final hr16 = rawData[1] | (rawData[2] << 8);
-                if (hr16 > 20 && hr16 < 250) _heartRate = hr16;
-              }
-            }
-            notifyListeners();
-          });
+          _subscribeToEcgStream();
+
+          // ✅ Démarrage enregistrement automatique ECG → Supabase (30 s)
+          // isMockMode: true → arrêt automatique après 5 inserts (évite la saturation en test)
+          _ecgSupabaseService.start(
+            getPatientId: () => _authService.currentUser?.id,
+            getEcgValues: () => List<double>.from(_realEcgData),
+            getHeartRate: () => _heartRate,
+            isMockMode: true, // ← passer à false (ou retirer) pour le bracelet réel
+          );
         } else {
           _bleStatus = 'scanning';
           notifyListeners();
@@ -181,6 +204,9 @@ class AppProvider extends ChangeNotifier {
   }
 
   Future<void> stopAutoScan() async {
+    // ✅ Arrêter l'enregistrement automatique avant de déconnecter
+    _ecgSupabaseService.stop();
+
     await _scanSubscription?.cancel();
     _scanSubscription = null;
     await _ecgSubscription?.cancel();
@@ -586,6 +612,31 @@ class AppProvider extends ChangeNotifier {
     _scanSubscription?.cancel();
     _ecgSubscription?.cancel();
     _bleStatusSubscription?.cancel();
+    // ✅ Arrêter l'enregistrement automatique ECG
+    _ecgSupabaseService.stop();
     super.dispose();
+  }
+
+  /// Écoute le stream ECG unifié de BleServiceAuto (real ou mock).
+  void _subscribeToEcgStream() {
+    _ecgSubscription?.cancel();
+    _ecgSubscription = _bleService.ecgDataStream.listen((rawData) {
+      final doubles = rawData.map((v) => v / 1000.0).toList();
+      for (final point in doubles) {
+        _realEcgData.add(point);
+        if (_realEcgData.length > 500) _realEcgData.removeAt(0);
+      }
+      if (rawData.length >= 2) {
+        final flags = rawData[0];
+        final isHr16bit = (flags & 0x01) != 0;
+        if (!isHr16bit && rawData[1] > 20 && rawData[1] < 250) {
+          _heartRate = rawData[1];
+        } else if (isHr16bit && rawData.length >= 3) {
+          final hr16 = rawData[1] | (rawData[2] << 8);
+          if (hr16 > 20 && hr16 < 250) _heartRate = hr16;
+        }
+      }
+      notifyListeners();
+    });
   }
 }

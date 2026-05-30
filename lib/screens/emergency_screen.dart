@@ -1,5 +1,7 @@
+import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:http/http.dart' as http;
 import 'package:provider/provider.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../providers/app_provider.dart';
@@ -21,9 +23,14 @@ class _EmergencyScreenState extends State<EmergencyScreen>
   late Animation<double> _fadeAnim;
 
   final SupabaseClient _supabase = Supabase.instance.client;
-  String? _alertId;
-  RealtimeChannel? _channel;
+
+  // ✅ Plus de _alertId ni _channel — le bouton urgence envoie juste un SMS
   bool _sending = false;
+  bool _smsSent = false; // ✅ état après envoi SMS
+
+  // ✅ Pour écouter la confirmation ECG automatique
+  RealtimeChannel? _ecgChannel;
+  String? _cardiologistNote;
 
   @override
   void initState() {
@@ -38,77 +45,51 @@ class _EmergencyScreenState extends State<EmergencyScreen>
         CurvedAnimation(parent: _pulseController, curve: Curves.easeInOut));
     _fadeAnim = Tween<double>(begin: 0, end: 1).animate(
         CurvedAnimation(parent: _fadeController, curve: Curves.easeOut));
+
+    // ✅ Écouter les confirmations ECG automatiques dès l'ouverture
+    _subscribeToEcgConfirmation();
   }
 
   @override
   void dispose() {
-    if (_channel != null) _supabase.removeChannel(_channel!);
+    _ecgChannel?.unsubscribe();
     _pulseController.dispose();
     _fadeController.dispose();
     super.dispose();
   }
 
-  // ✅ CORRIGÉ — utilise RPC au lieu de .from('profiles')
-  Future<String?> _resolveCardiologistId(String label) async {
-    if (label.isEmpty) return null;
+  // ✅ Listener Realtime : cardiologue confirme alerte ECG automatique
+  void _subscribeToEcgConfirmation() {
+    final userId = _supabase.auth.currentUser?.id;
+    if (userId == null) return;
 
-    String searchName = label.trim();
-    if (searchName.startsWith('Dr. '))
-      searchName = searchName.substring(4).trim();
-    if (searchName.contains(' - '))
-      searchName = searchName.split(' - ')[0].trim();
-
-    print('🔍 [EMERGENCY] Recherche cardiologue: "$searchName"');
-
-    try {
-      // ✅ RPC SECURITY DEFINER — bypass RLS, zéro récursion
-      final response = await _supabase.rpc('get_cardiologist_profiles');
-      if (response == null) return null;
-
-      final list = response as List;
-
-      // Recherche par containsIgnoreCase
-      final exact = list.firstWhere(
-        (c) => (c['full_name'] as String? ?? '')
-            .toLowerCase()
-            .contains(searchName.toLowerCase()),
-        orElse: () => null,
-      );
-
-      if (exact != null) {
-        print('✅ [EMERGENCY] Trouvé: ${exact['full_name']} → ${exact['id']}');
-        return exact['id'] as String?;
-      }
-
-      // Fallback mot par mot
-      final words = searchName.split(' ').where((w) => w.length > 2).toList();
-
-      for (final word in words) {
-        final byWord = list.firstWhere(
-          (c) => (c['full_name'] as String? ?? '')
-              .toLowerCase()
-              .contains(word.toLowerCase()),
-          orElse: () => null,
-        );
-        if (byWord != null) {
-          print('✅ [EMERGENCY] Trouvé via "$word": ${byWord['full_name']}');
-          return byWord['id'] as String?;
-        }
-      }
-
-      // Debug : afficher liste disponible
-      print('❌ [EMERGENCY] Non trouvé. Disponibles:');
-      for (final c in list) {
-        print('   - ${c['full_name']}');
-      }
-      return null;
-    } catch (e) {
-      print('❌ [EMERGENCY] Erreur RPC: $e');
-      return null;
-    }
+    _ecgChannel = _supabase
+        .channel('ecg_confirm_emergency_$userId')
+        .onPostgresChanges(
+          event: PostgresChangeEvent.update,
+          schema: 'public',
+          table: 'ecg_readings',
+          filter: PostgresChangeFilter(
+            type: PostgresChangeFilterType.eq,
+            column: 'patient_id',
+            value: userId,
+          ),
+          callback: (payload) {
+            final confirmedAt = payload.newRecord['confirmed_at'];
+            final note = payload.newRecord['cardiologist_note'] as String?;
+            if (confirmedAt != null && mounted) {
+              setState(() => _cardiologistNote = note);
+              // ✅ Passer en état confirmé → page rouge SAMU
+              final app = Provider.of<AppProvider>(context, listen: false);
+              app.confirmEmergency();
+            }
+          },
+        )
+        .subscribe();
   }
 
-  Future<void> _triggerAlert(AppProvider app) async {
+  // ✅ Bouton URGENCE : SMS famille uniquement, plus d'alerte cardiologue
+  Future<void> _triggerSmsOnly(AppProvider app) async {
     if (_sending) return;
     setState(() => _sending = true);
     HapticFeedback.heavyImpact();
@@ -116,49 +97,20 @@ class _EmergencyScreenState extends State<EmergencyScreen>
     try {
       final userId = _supabase.auth.currentUser!.id;
 
-      // 1. Données patient
       final patientData = await _supabase
           .from('patients')
-          .select('cardiologist_id, cardiologist, first_name, last_name')
+          .select('first_name, last_name, family_phone')
           .eq('id', userId)
           .single();
 
       final patientName =
           '${patientData['first_name']} ${patientData['last_name']}';
-      final cardiologistLabel = patientData['cardiologist'] as String? ?? '';
+      final familyPhone = patientData['family_phone'] as String?;
 
-      print('🔹 [EMERGENCY] Patient: $patientName');
-      print(
-          '🔹 [EMERGENCY] cardiologist_id stocké: ${patientData['cardiologist_id']}');
-      print('🔹 [EMERGENCY] cardiologist label: $cardiologistLabel');
+      debugPrint('🔹 [URGENCE] Patient: $patientName');
+      debugPrint('🔹 [URGENCE] family_phone: $familyPhone');
 
-      // 2. Résoudre l'ID du cardiologue
-      String? cardiologistId = patientData['cardiologist_id'] as String?;
-
-      if (cardiologistId == null || cardiologistId.isEmpty) {
-        if (cardiologistLabel.isEmpty) {
-          _showSnack('Aucun cardiologue assigné. Vérifiez votre profil.');
-          setState(() => _sending = false);
-          return;
-        }
-
-        // ✅ Utilise le RPC — pas de récursion
-        cardiologistId = await _resolveCardiologistId(cardiologistLabel);
-
-        if (cardiologistId == null) {
-          _showSnack('Cardiologue introuvable. Vérifiez votre profil.');
-          setState(() => _sending = false);
-          return;
-        }
-
-        // Sauvegarder pour éviter la recherche la prochaine fois
-        await _supabase
-            .from('patients')
-            .update({'cardiologist_id': cardiologistId}).eq('id', userId);
-        print('✅ [EMERGENCY] cardiologist_id sauvegardé: $cardiologistId');
-      }
-
-      // 3. Dernier ECG
+      // Dernier ECG pour contexte
       final ecgData = await _supabase
           .from('ecg_readings')
           .select('heart_rate, status')
@@ -168,87 +120,51 @@ class _EmergencyScreenState extends State<EmergencyScreen>
           .maybeSingle();
 
       final heartRate = ecgData?['heart_rate'] as int?;
-      final ecgStatus = ecgData?['status'] as String?;
-      final aiScore = _scoreFromStatus(ecgStatus);
+      final hrText = heartRate != null ? '$heartRate bpm' : 'inconnue';
 
-      print('✅ [EMERGENCY] Envoi alerte → cardiologue: $cardiologistId');
-
-      // 4. INSERT emergency_alerts
-      final result = await _supabase
-          .from('emergency_alerts')
-          .insert({
-            'patient_id': userId,
-            'cardiologist_id': cardiologistId,
-            'status': 'pending',
-            'patient_name': patientName,
-            'heart_rate': heartRate,
-            'ai_score': aiScore,
-            'ai_severity': ecgStatus ?? 'warning',
-          })
-          .select('id')
-          .single();
-
-      _alertId = result['id'] as String;
-      print('✅ [EMERGENCY] Alerte créée: $_alertId');
-
-      // 5. Écouter la réponse
-      _subscribeToAlert(_alertId!);
-
-      // 6. Mise à jour état local
-      app.triggerEmergency();
+      // ✅ SMS famille uniquement
+      if (familyPhone != null && familyPhone.isNotEmpty) {
+        try {
+          final smsResponse = await http.post(
+            Uri.parse('https://caredify-api.onrender.com/send-sms'),
+            headers: {'Content-Type': 'application/json'},
+            body: jsonEncode({
+              'to': familyPhone,
+              'message':
+                  'URGENT : $patientName a déclenché une alerte cardiaque. '
+                      'Fréquence cardiaque : $hrText. '
+                      'Veuillez le/la contacter immédiatement ou appeler le 15.',
+            }),
+          );
+          if (smsResponse.statusCode == 200) {
+            debugPrint('✅ [SMS] Envoyé à $familyPhone');
+            setState(() => _smsSent = true);
+          } else {
+            debugPrint('⚠️ [SMS] Erreur HTTP: ${smsResponse.body}');
+            _showSnack('Erreur envoi SMS. Vérifiez votre connexion.');
+          }
+        } catch (e) {
+          debugPrint('⚠️ [SMS] Exception: $e');
+          _showSnack('Erreur envoi SMS: $e');
+        }
+      } else {
+        _showSnack('Aucun numéro famille défini. Vérifiez votre profil.');
+      }
     } catch (e) {
-      debugPrint('❌ [EMERGENCY] Erreur: $e');
-      _showSnack('Erreur lors de l\'envoi: $e');
+      debugPrint('❌ [URGENCE] Erreur: $e');
+      _showSnack('Erreur: $e');
     } finally {
       if (mounted) setState(() => _sending = false);
     }
   }
 
-  void _subscribeToAlert(String alertId) {
-    _channel = _supabase
-        .channel('emergency:$alertId')
-        .onPostgresChanges(
-          event: PostgresChangeEvent.update,
-          schema: 'public',
-          table: 'emergency_alerts',
-          filter: PostgresChangeFilter(
-            type: PostgresChangeFilterType.eq,
-            column: 'id',
-            value: alertId,
-          ),
-          callback: (payload) {
-            if (!mounted) return;
-            final newStatus = payload.newRecord['status'] as String?;
-            final app = Provider.of<AppProvider>(context, listen: false);
-            if (newStatus == 'confirmed') {
-              app.confirmEmergency();
-            } else if (newStatus == 'cancelled') {
-              app.setEmergencySafe();
-            }
-          },
-        )
-        .subscribe();
-  }
-
-  Future<void> _cancelAlert(AppProvider app) async {
-    if (_alertId != null) {
-      await _supabase.from('emergency_alerts').update({
-        'status': 'cancelled',
-        'responded_at': DateTime.now().toIso8601String(),
-      }).eq('id', _alertId!);
-    }
-    if (_channel != null) {
-      _supabase.removeChannel(_channel!);
-      _channel = null;
-    }
-    _alertId = null;
+  // ✅ Annuler — retour à l'état normal
+  void _cancelEmergency(AppProvider app) {
+    setState(() {
+      _smsSent = false;
+      _cardiologistNote = null;
+    });
     app.cancelEmergency();
-  }
-
-  int _scoreFromStatus(String? status) {
-    if (status == 'critical') return 75 + (DateTime.now().millisecond % 25);
-    if (status == 'warning') return 50 + (DateTime.now().millisecond % 24);
-    return 85;
   }
 
   void _showSnack(String msg) {
@@ -270,15 +186,12 @@ class _EmergencyScreenState extends State<EmergencyScreen>
   Widget build(BuildContext context) {
     return Consumer<AppProvider>(builder: (context, app, _) {
       final isConfirmed = app.emergencyState == EmergencyState.confirmed;
-      final isPending = app.emergencyState == EmergencyState.pending;
       final isSafe = app.emergencyState == EmergencyState.safe;
       final isNone = app.emergencyState == EmergencyState.none;
 
       Color bgColor;
       if (isConfirmed)
         bgColor = const Color(0xFF8B0000);
-      else if (isPending)
-        bgColor = ThemeHelper.emergency(context);
       else if (isSafe)
         bgColor = const Color(0xFF065F46);
       else
@@ -292,18 +205,22 @@ class _EmergencyScreenState extends State<EmergencyScreen>
           leading: (widget.showBackButton || isSafe || isNone)
               ? IconButton(
                   icon: Icon(Icons.arrow_back,
-                      color: (isPending || isConfirmed || isSafe)
+                      color: isConfirmed || isSafe
                           ? Colors.white
                           : ThemeHelper.textPrimary(context)),
                   onPressed: _goBack,
                 )
               : null,
           title: Text(
-            isSafe ? 'Vous êtes en sécurité' : 'Urgence',
+            isSafe
+                ? 'Vous êtes en sécurité'
+                : isConfirmed
+                    ? 'Urgence confirmée'
+                    : 'Urgence',
             style: TextStyle(
               fontSize: 18,
               fontWeight: FontWeight.w600,
-              color: (isPending || isConfirmed || isSafe)
+              color: isConfirmed || isSafe
                   ? Colors.white
                   : ThemeHelper.textPrimary(context),
             ),
@@ -318,33 +235,45 @@ class _EmergencyScreenState extends State<EmergencyScreen>
   }
 
   Widget _buildBody(BuildContext context, AppProvider app) {
-    switch (app.emergencyState) {
-      case EmergencyState.none:
-        return _NormalState(
-            onTrigger: () => _triggerAlert(app), sending: _sending);
-      case EmergencyState.pending:
-        return _PendingState(
-            onCancel: () => _cancelAlert(app),
-            pulseAnim: _pulseAnim,
-            fadeAnim: _fadeAnim);
-      case EmergencyState.confirmed:
-        return _ConfirmedState(
-            countdown: app.emergencyCountdownFormatted,
-            onCancel: () => _cancelAlert(app),
-            pulseAnim: _pulseAnim);
-      case EmergencyState.safe:
-        return _SafeState(onBack: _goBack);
+    // ✅ Page rouge SAMU quand cardiologue confirme alerte ECG
+    if (app.emergencyState == EmergencyState.confirmed) {
+      return _ConfirmedState(
+        countdown: app.emergencyCountdownFormatted,
+        cardiologistNote: _cardiologistNote,
+        onCancel: () => _cancelEmergency(app),
+        pulseAnim: _pulseAnim,
+      );
     }
+
+    if (app.emergencyState == EmergencyState.safe) {
+      return _SafeState(onBack: _goBack);
+    }
+
+    // ✅ État normal ou après SMS envoyé
+    return _NormalState(
+      onTrigger: () => _triggerSmsOnly(app),
+      sending: _sending,
+      smsSent: _smsSent,
+      onReset: () => setState(() => _smsSent = false),
+    );
   }
 }
 
 // ══════════════════════════════════════════════════════
-// État normal
+// État normal — bouton SMS famille uniquement
 // ══════════════════════════════════════════════════════
 class _NormalState extends StatelessWidget {
   final VoidCallback onTrigger;
+  final VoidCallback onReset;
   final bool sending;
-  const _NormalState({required this.onTrigger, required this.sending});
+  final bool smsSent;
+
+  const _NormalState({
+    required this.onTrigger,
+    required this.onReset,
+    required this.sending,
+    required this.smsSent,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -371,22 +300,28 @@ class _NormalState extends StatelessWidget {
             Text('En cas de malaise ou symptômes graves',
                 style: TextStyle(fontSize: 15, color: textSec)),
             const SizedBox(height: 40),
+
+            // ── Bouton principal ────────────────────────────────────────
             Center(
               child: GestureDetector(
-                onTap: sending ? null : onTrigger,
+                onTap: sending || smsSent ? null : onTrigger,
                 child: AnimatedContainer(
                   duration: const Duration(milliseconds: 200),
                   width: 220,
                   height: 220,
                   decoration: BoxDecoration(
-                    color: sending
-                        ? ThemeHelper.emergency(context).withOpacity(0.6)
-                        : ThemeHelper.emergency(context),
+                    color: smsSent
+                        ? const Color(0xFF10B981)
+                        : sending
+                            ? ThemeHelper.emergency(context).withOpacity(0.6)
+                            : ThemeHelper.emergency(context),
                     shape: BoxShape.circle,
                     boxShadow: [
                       BoxShadow(
-                          color:
-                              ThemeHelper.emergency(context).withOpacity(0.35),
+                          color: (smsSent
+                                  ? const Color(0xFF10B981)
+                                  : ThemeHelper.emergency(context))
+                              .withOpacity(0.35),
                           blurRadius: 40,
                           spreadRadius: 10)
                     ],
@@ -395,35 +330,129 @@ class _NormalState extends StatelessWidget {
                       ? const Center(
                           child: CircularProgressIndicator(
                               color: Colors.white, strokeWidth: 3))
-                      : const Column(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          children: [
-                            Icon(Icons.emergency_rounded,
-                                color: Colors.white, size: 60),
-                            SizedBox(height: 12),
-                            Text('URGENCE',
-                                style: TextStyle(
-                                    fontSize: 22,
-                                    fontWeight: FontWeight.w900,
-                                    color: Colors.white,
-                                    letterSpacing: 2)),
-                            SizedBox(height: 4),
-                            Text('Appuyer ici',
-                                style: TextStyle(
-                                    fontSize: 14,
-                                    color: Colors.white70,
-                                    fontWeight: FontWeight.w500)),
-                          ],
-                        ),
+                      : smsSent
+                          ? const Column(
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              children: [
+                                Icon(Icons.check_circle_rounded,
+                                    color: Colors.white, size: 60),
+                                SizedBox(height: 12),
+                                Text('SMS ENVOYÉ',
+                                    style: TextStyle(
+                                        fontSize: 18,
+                                        fontWeight: FontWeight.w900,
+                                        color: Colors.white,
+                                        letterSpacing: 1)),
+                                SizedBox(height: 4),
+                                Text('Famille alertée',
+                                    style: TextStyle(
+                                        fontSize: 12,
+                                        color: Colors.white70,
+                                        fontWeight: FontWeight.w500)),
+                              ],
+                            )
+                          : const Column(
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              children: [
+                                Icon(Icons.emergency_rounded,
+                                    color: Colors.white, size: 60),
+                                SizedBox(height: 12),
+                                Text('URGENCE',
+                                    style: TextStyle(
+                                        fontSize: 22,
+                                        fontWeight: FontWeight.w900,
+                                        color: Colors.white,
+                                        letterSpacing: 2)),
+                                SizedBox(height: 4),
+                                Text('Appuyer ici',
+                                    style: TextStyle(
+                                        fontSize: 12,
+                                        color: Colors.white70,
+                                        fontWeight: FontWeight.w500)),
+                              ],
+                            ),
                 ),
               ),
             ),
-            const SizedBox(height: 40),
+            const SizedBox(height: 12),
+
+            // ── Badge SMS ──────────────────────────────────────────────
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+              decoration: BoxDecoration(
+                color: smsSent
+                    ? const Color(0xFF10B981).withOpacity(0.1)
+                    : const Color(0xFF0EA5E9).withOpacity(0.08),
+                borderRadius: BorderRadius.circular(20),
+                border: Border.all(
+                    color: smsSent
+                        ? const Color(0xFF10B981).withOpacity(0.3)
+                        : const Color(0xFF0EA5E9).withOpacity(0.25)),
+              ),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Icon(
+                    smsSent ? Icons.check_circle_rounded : Icons.sms_rounded,
+                    color: smsSent
+                        ? const Color(0xFF10B981)
+                        : const Color(0xFF0EA5E9),
+                    size: 14,
+                  ),
+                  const SizedBox(width: 6),
+                  Flexible(
+                    child: Text(
+                      smsSent
+                          ? 'SMS envoyé à votre famille ✓'
+                          : 'SMS automatique envoyé à votre famille',
+                      style: TextStyle(
+                          fontSize: 11,
+                          color: smsSent
+                              ? const Color(0xFF10B981)
+                              : const Color(0xFF0EA5E9),
+                          fontWeight: FontWeight.w500),
+                      overflow: TextOverflow.ellipsis,
+                      maxLines: 1,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+
+            // ✅ Bouton renvoyer si SMS déjà envoyé
+            if (smsSent) ...[
+              const SizedBox(height: 12),
+              Center(
+                child: TextButton.icon(
+                  onPressed: onReset,
+                  icon: const Icon(Icons.refresh_rounded,
+                      size: 16, color: Color(0xFF0EA5E9)),
+                  label: const Text('Renvoyer un SMS',
+                      style: TextStyle(color: Color(0xFF0EA5E9), fontSize: 13)),
+                ),
+              ),
+            ],
+
+            const SizedBox(height: 32),
+
             _InfoCard(
-              icon: Icons.medical_services_rounded,
-              title: 'Processus d\'alerte',
+              icon: Icons.sms_rounded,
+              title: 'SMS famille automatique',
               description:
-                  'L\'IA analyse votre ECG → Votre cardiologue valide → Le SAMU est alerté',
+                  'Un SMS est envoyé instantanément au numéro famille défini dans votre profil',
+              color: const Color(0xFF0EA5E9),
+              surface: surface,
+              border: border,
+              textPrimary: textPri,
+              textSecondary: textSec,
+            ),
+            const SizedBox(height: 12),
+            _InfoCard(
+              icon: Icons.monitor_heart_rounded,
+              title: 'Surveillance ECG continue',
+              description:
+                  'Votre cardiologue reçoit une alerte automatique si votre ECG devient critique',
               color: primary,
               surface: surface,
               border: border,
@@ -435,24 +464,14 @@ class _NormalState extends StatelessWidget {
               icon: Icons.location_on_rounded,
               title: 'GPS activé',
               description: 'Votre position est transmise automatiquement',
-              color: ThemeHelper.normal(context),
-              surface: surface,
-              border: border,
-              textPrimary: textPri,
-              textSecondary: textSec,
-            ),
-            const SizedBox(height: 12),
-            _InfoCard(
-              icon: Icons.person_rounded,
-              title: 'Contact d\'urgence',
-              description: 'Votre cardiologue sera alerté immédiatement',
               color: warning,
               surface: surface,
               border: border,
               textPrimary: textPri,
               textSecondary: textSec,
             ),
-            const SizedBox(height: 40),
+            const SizedBox(height: 32),
+
             Container(
               padding: const EdgeInsets.all(14),
               decoration: BoxDecoration(
@@ -480,191 +499,18 @@ class _NormalState extends StatelessWidget {
 }
 
 // ══════════════════════════════════════════════════════
-// État en attente
-// ══════════════════════════════════════════════════════
-class _PendingState extends StatelessWidget {
-  final VoidCallback onCancel;
-  final Animation<double> pulseAnim, fadeAnim;
-  const _PendingState({
-    required this.onCancel,
-    required this.pulseAnim,
-    required this.fadeAnim,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return FadeTransition(
-      opacity: fadeAnim,
-      child: SafeArea(
-        top: false,
-        child: SingleChildScrollView(
-          padding: const EdgeInsets.all(24),
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              const SizedBox(height: 20),
-              ScaleTransition(
-                scale: pulseAnim,
-                child: Container(
-                  width: 130,
-                  height: 130,
-                  decoration: BoxDecoration(
-                      color: Colors.white.withOpacity(0.2),
-                      shape: BoxShape.circle,
-                      border: Border.all(
-                          color: Colors.white.withOpacity(0.5), width: 3)),
-                  child: const Icon(Icons.favorite_rounded,
-                      color: Colors.white, size: 64),
-                ),
-              ),
-              const SizedBox(height: 36),
-              const Text('Restez calme',
-                  style: TextStyle(
-                      fontSize: 36,
-                      fontWeight: FontWeight.w900,
-                      color: Colors.white,
-                      letterSpacing: -0.5)),
-              const SizedBox(height: 12),
-              Container(
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
-                decoration: BoxDecoration(
-                    color: Colors.white.withOpacity(0.15),
-                    borderRadius: BorderRadius.circular(30)),
-                child: const Text('🩺 Le cardiologue examine votre cas',
-                    style: TextStyle(
-                        fontSize: 16,
-                        color: Colors.white,
-                        fontWeight: FontWeight.w600),
-                    textAlign: TextAlign.center),
-              ),
-              const SizedBox(height: 36),
-              const CircularProgressIndicator(
-                  color: Colors.white, strokeWidth: 3),
-              const SizedBox(height: 10),
-              const Text('En attente de réponse...',
-                  style: TextStyle(fontSize: 14, color: Colors.white60)),
-              const SizedBox(height: 36),
-              _buildInstruction(Icons.airline_seat_flat_rounded,
-                  'Allongez-vous ou asseyez-vous confortablement'),
-              const SizedBox(height: 12),
-              _buildInstruction(
-                  Icons.air_rounded, 'Respirez lentement et profondément'),
-              const SizedBox(height: 12),
-              _buildInstruction(Icons.location_on_rounded,
-                  'Votre position GPS est transmise au cardiologue'),
-              const SizedBox(height: 12),
-              _buildInstruction(Icons.door_front_door_rounded,
-                  'Si possible, déverrouillez votre porte d\'entrée'),
-              const SizedBox(height: 36),
-              Container(
-                width: double.infinity,
-                padding: const EdgeInsets.all(20),
-                decoration: BoxDecoration(
-                    color: Colors.white.withOpacity(0.12),
-                    borderRadius: BorderRadius.circular(16),
-                    border: Border.all(color: Colors.white.withOpacity(0.2))),
-                child: const Column(children: [
-                  Icon(Icons.shield_rounded, color: Colors.white, size: 32),
-                  SizedBox(height: 10),
-                  Text('Vous êtes entre de bonnes mains',
-                      style: TextStyle(
-                          fontSize: 18,
-                          fontWeight: FontWeight.w800,
-                          color: Colors.white),
-                      textAlign: TextAlign.center),
-                  SizedBox(height: 8),
-                  Text(
-                      'Votre cardiologue analyse votre ECG en temps réel et prendra les mesures nécessaires.',
-                      style: TextStyle(
-                          fontSize: 13, color: Colors.white70, height: 1.6),
-                      textAlign: TextAlign.center),
-                ]),
-              ),
-              const SizedBox(height: 32),
-              TextButton(
-                onPressed: () => showDialog(
-                  context: context,
-                  builder: (_) => AlertDialog(
-                    title: const Text('Annuler l\'alerte ?'),
-                    content: const Text('Êtes-vous sûr de vouloir annuler ?'),
-                    actions: [
-                      TextButton(
-                          onPressed: () => Navigator.pop(context),
-                          child: const Text('Non')),
-                      TextButton(
-                        onPressed: () {
-                          Navigator.pop(context);
-                          onCancel();
-                        },
-                        child: const Text('Oui, annuler',
-                            style: TextStyle(color: Colors.red)),
-                      ),
-                    ],
-                  ),
-                ),
-                child: const Text('Fausse alerte — Annuler',
-                    style: TextStyle(color: Colors.white54, fontSize: 14)),
-              ),
-              const SizedBox(height: 20),
-              Container(
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-                decoration: BoxDecoration(
-                    color: Colors.black.withOpacity(0.2),
-                    borderRadius: BorderRadius.circular(10)),
-                child: const Text(
-                    '⚠️ Prototype académique — Mode simulé\nAucun service d\'urgence réel n\'est contacté',
-                    style: TextStyle(
-                        fontSize: 11, color: Colors.white54, height: 1.5),
-                    textAlign: TextAlign.center),
-              ),
-              const SizedBox(height: 20),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-
-  static Widget _buildInstruction(IconData icon, String text) {
-    return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
-      decoration: BoxDecoration(
-          color: Colors.white.withOpacity(0.12),
-          borderRadius: BorderRadius.circular(14),
-          border: Border.all(color: Colors.white.withOpacity(0.15))),
-      child: Row(children: [
-        Container(
-          width: 40,
-          height: 40,
-          decoration: BoxDecoration(
-              color: Colors.white.withOpacity(0.15), shape: BoxShape.circle),
-          child: Icon(icon, color: Colors.white, size: 20),
-        ),
-        const SizedBox(width: 14),
-        Expanded(
-            child: Text(text,
-                style: const TextStyle(
-                    fontSize: 13,
-                    color: Colors.white,
-                    fontWeight: FontWeight.w500,
-                    height: 1.4))),
-      ]),
-    );
-  }
-}
-
-// ══════════════════════════════════════════════════════
-// État confirmé
+// ✅ Page rouge SAMU — cardiologue a confirmé alerte ECG
+//    Affiche la note médicale
 // ══════════════════════════════════════════════════════
 class _ConfirmedState extends StatelessWidget {
   final String countdown;
+  final String? cardiologistNote;
   final VoidCallback onCancel;
   final Animation<double> pulseAnim;
+
   const _ConfirmedState({
     required this.countdown,
+    required this.cardiologistNote,
     required this.onCancel,
     required this.pulseAnim,
   });
@@ -677,6 +523,8 @@ class _ConfirmedState extends StatelessWidget {
         padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 20),
         child: Column(children: [
           const SizedBox(height: 8),
+
+          // ✅ Même style que la photo 1 (dialog) mais en pleine page
           const Row(mainAxisAlignment: MainAxisAlignment.center, children: [
             Icon(Icons.verified_rounded, color: Colors.white, size: 24),
             SizedBox(width: 8),
@@ -690,7 +538,42 @@ class _ConfirmedState extends StatelessWidget {
           const SizedBox(height: 6),
           const Text('Validée par votre cardiologue',
               style: TextStyle(fontSize: 14, color: Colors.white70)),
-          const SizedBox(height: 32),
+          const SizedBox(height: 24),
+
+          // ✅ Note médicale du cardiologue — affiché comme photo 1
+          if (cardiologistNote != null && cardiologistNote!.isNotEmpty) ...[
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.all(16),
+              decoration: BoxDecoration(
+                color: Colors.white.withOpacity(0.12),
+                borderRadius: BorderRadius.circular(14),
+                border: Border.all(color: Colors.white.withOpacity(0.25)),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Row(children: [
+                    Text('📋 ', style: TextStyle(fontSize: 16)),
+                    Text('Note médicale',
+                        style: TextStyle(
+                            color: Color(0xFF10B981),
+                            fontSize: 13,
+                            fontWeight: FontWeight.bold)),
+                  ]),
+                  const SizedBox(height: 8),
+                  Text(
+                    cardiologistNote!,
+                    style: const TextStyle(
+                        color: Colors.white, fontSize: 15, height: 1.5),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 20),
+          ],
+
+          // ✅ Compteur SAMU
           ScaleTransition(
             scale: pulseAnim,
             child: Container(
@@ -721,7 +604,8 @@ class _ConfirmedState extends StatelessWidget {
               ),
             ),
           ),
-          const SizedBox(height: 32),
+          const SizedBox(height: 24),
+
           Container(
             width: double.infinity,
             padding: const EdgeInsets.all(18),
@@ -745,7 +629,8 @@ class _ConfirmedState extends StatelessWidget {
                   textAlign: TextAlign.center),
             ]),
           ),
-          const SizedBox(height: 32),
+          const SizedBox(height: 24),
+
           SizedBox(
             width: double.infinity,
             child: ElevatedButton.icon(
@@ -775,7 +660,7 @@ class _ConfirmedState extends StatelessWidget {
 }
 
 // ══════════════════════════════════════════════════════
-// État sain — page verte
+// État sain (inchangé)
 // ══════════════════════════════════════════════════════
 class _SafeState extends StatelessWidget {
   final VoidCallback onBack;
@@ -863,12 +748,13 @@ class _SafeState extends StatelessWidget {
 }
 
 // ══════════════════════════════════════════════════════
-// _InfoCard
+// _InfoCard (inchangée)
 // ══════════════════════════════════════════════════════
 class _InfoCard extends StatelessWidget {
   final IconData icon;
   final String title, description;
   final Color color, surface, border, textPrimary, textSecondary;
+
   const _InfoCard({
     required this.icon,
     required this.title,
