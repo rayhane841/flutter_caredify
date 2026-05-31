@@ -7,9 +7,16 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import '../providers/app_provider.dart';
 import '../utils/theme_helper.dart';
 
+// ✅ Modification 1 — ajout de initialCardiologistNote
 class EmergencyScreen extends StatefulWidget {
   final bool showBackButton;
-  const EmergencyScreen({super.key, this.showBackButton = false});
+  final String? initialCardiologistNote;
+
+  const EmergencyScreen({
+    super.key,
+    this.showBackButton = false,
+    this.initialCardiologistNote,
+  });
 
   @override
   State<EmergencyScreen> createState() => _EmergencyScreenState();
@@ -24,11 +31,9 @@ class _EmergencyScreenState extends State<EmergencyScreen>
 
   final SupabaseClient _supabase = Supabase.instance.client;
 
-  // ✅ Plus de _alertId ni _channel — le bouton urgence envoie juste un SMS
   bool _sending = false;
-  bool _smsSent = false; // ✅ état après envoi SMS
+  bool _smsSent = false;
 
-  // ✅ Pour écouter la confirmation ECG automatique
   RealtimeChannel? _ecgChannel;
   String? _cardiologistNote;
 
@@ -46,7 +51,17 @@ class _EmergencyScreenState extends State<EmergencyScreen>
     _fadeAnim = Tween<double>(begin: 0, end: 1).animate(
         CurvedAnimation(parent: _fadeController, curve: Curves.easeOut));
 
-    // ✅ Écouter les confirmations ECG automatiques dès l'ouverture
+    // ✅ Modification 2 — si note passée depuis dashboard
+    if (widget.initialCardiologistNote != null) {
+      _cardiologistNote = widget.initialCardiologistNote;
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        final app = Provider.of<AppProvider>(context, listen: false);
+        if (app.emergencyState != EmergencyState.confirmed) {
+          app.confirmEmergency();
+        }
+      });
+    }
+
     _subscribeToEcgConfirmation();
   }
 
@@ -58,7 +73,6 @@ class _EmergencyScreenState extends State<EmergencyScreen>
     super.dispose();
   }
 
-  // ✅ Listener Realtime : cardiologue confirme alerte ECG automatique
   void _subscribeToEcgConfirmation() {
     final userId = _supabase.auth.currentUser?.id;
     if (userId == null) return;
@@ -79,7 +93,6 @@ class _EmergencyScreenState extends State<EmergencyScreen>
             final note = payload.newRecord['cardiologist_note'] as String?;
             if (confirmedAt != null && mounted) {
               setState(() => _cardiologistNote = note);
-              // ✅ Passer en état confirmé → page rouge SAMU
               final app = Provider.of<AppProvider>(context, listen: false);
               app.confirmEmergency();
             }
@@ -88,7 +101,6 @@ class _EmergencyScreenState extends State<EmergencyScreen>
         .subscribe();
   }
 
-  // ✅ Bouton URGENCE : SMS famille uniquement, plus d'alerte cardiologue
   Future<void> _triggerSmsOnly(AppProvider app) async {
     if (_sending) return;
     setState(() => _sending = true);
@@ -110,7 +122,6 @@ class _EmergencyScreenState extends State<EmergencyScreen>
       debugPrint('🔹 [URGENCE] Patient: $patientName');
       debugPrint('🔹 [URGENCE] family_phone: $familyPhone');
 
-      // Dernier ECG pour contexte
       final ecgData = await _supabase
           .from('ecg_readings')
           .select('heart_rate, status')
@@ -122,7 +133,6 @@ class _EmergencyScreenState extends State<EmergencyScreen>
       final heartRate = ecgData?['heart_rate'] as int?;
       final hrText = heartRate != null ? '$heartRate bpm' : 'inconnue';
 
-      // ✅ SMS famille uniquement
       if (familyPhone != null && familyPhone.isNotEmpty) {
         try {
           final smsResponse = await http.post(
@@ -158,7 +168,6 @@ class _EmergencyScreenState extends State<EmergencyScreen>
     }
   }
 
-  // ✅ Annuler — retour à l'état normal
   void _cancelEmergency(AppProvider app) {
     setState(() {
       _smsSent = false;
@@ -235,7 +244,6 @@ class _EmergencyScreenState extends State<EmergencyScreen>
   }
 
   Widget _buildBody(BuildContext context, AppProvider app) {
-    // ✅ Page rouge SAMU quand cardiologue confirme alerte ECG
     if (app.emergencyState == EmergencyState.confirmed) {
       return _ConfirmedState(
         countdown: app.emergencyCountdownFormatted,
@@ -249,7 +257,6 @@ class _EmergencyScreenState extends State<EmergencyScreen>
       return _SafeState(onBack: _goBack);
     }
 
-    // ✅ État normal ou après SMS envoyé
     return _NormalState(
       onTrigger: () => _triggerSmsOnly(app),
       sending: _sending,
@@ -260,7 +267,7 @@ class _EmergencyScreenState extends State<EmergencyScreen>
 }
 
 // ══════════════════════════════════════════════════════
-// État normal — bouton SMS famille uniquement
+// État normal
 // ══════════════════════════════════════════════════════
 class _NormalState extends StatelessWidget {
   final VoidCallback onTrigger;
@@ -300,8 +307,6 @@ class _NormalState extends StatelessWidget {
             Text('En cas de malaise ou symptômes graves',
                 style: TextStyle(fontSize: 15, color: textSec)),
             const SizedBox(height: 40),
-
-            // ── Bouton principal ────────────────────────────────────────
             Center(
               child: GestureDetector(
                 onTap: sending || smsSent ? null : onTrigger,
@@ -375,8 +380,6 @@ class _NormalState extends StatelessWidget {
               ),
             ),
             const SizedBox(height: 12),
-
-            // ── Badge SMS ──────────────────────────────────────────────
             Container(
               width: double.infinity,
               padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
@@ -419,8 +422,6 @@ class _NormalState extends StatelessWidget {
                 ],
               ),
             ),
-
-            // ✅ Bouton renvoyer si SMS déjà envoyé
             if (smsSent) ...[
               const SizedBox(height: 12),
               Center(
@@ -433,9 +434,7 @@ class _NormalState extends StatelessWidget {
                 ),
               ),
             ],
-
             const SizedBox(height: 32),
-
             _InfoCard(
               icon: Icons.sms_rounded,
               title: 'SMS famille automatique',
@@ -471,7 +470,6 @@ class _NormalState extends StatelessWidget {
               textSecondary: textSec,
             ),
             const SizedBox(height: 32),
-
             Container(
               padding: const EdgeInsets.all(14),
               decoration: BoxDecoration(
@@ -499,8 +497,7 @@ class _NormalState extends StatelessWidget {
 }
 
 // ══════════════════════════════════════════════════════
-// ✅ Page rouge SAMU — cardiologue a confirmé alerte ECG
-//    Affiche la note médicale
+// Page rouge SAMU
 // ══════════════════════════════════════════════════════
 class _ConfirmedState extends StatelessWidget {
   final String countdown;
@@ -523,8 +520,6 @@ class _ConfirmedState extends StatelessWidget {
         padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 20),
         child: Column(children: [
           const SizedBox(height: 8),
-
-          // ✅ Même style que la photo 1 (dialog) mais en pleine page
           const Row(mainAxisAlignment: MainAxisAlignment.center, children: [
             Icon(Icons.verified_rounded, color: Colors.white, size: 24),
             SizedBox(width: 8),
@@ -540,7 +535,7 @@ class _ConfirmedState extends StatelessWidget {
               style: TextStyle(fontSize: 14, color: Colors.white70)),
           const SizedBox(height: 24),
 
-          // ✅ Note médicale du cardiologue — affiché comme photo 1
+          // ✅ Note médicale
           if (cardiologistNote != null && cardiologistNote!.isNotEmpty) ...[
             Container(
               width: double.infinity,
@@ -660,7 +655,7 @@ class _ConfirmedState extends StatelessWidget {
 }
 
 // ══════════════════════════════════════════════════════
-// État sain (inchangé)
+// État sain
 // ══════════════════════════════════════════════════════
 class _SafeState extends StatelessWidget {
   final VoidCallback onBack;
@@ -748,7 +743,7 @@ class _SafeState extends StatelessWidget {
 }
 
 // ══════════════════════════════════════════════════════
-// _InfoCard (inchangée)
+// _InfoCard
 // ══════════════════════════════════════════════════════
 class _InfoCard extends StatelessWidget {
   final IconData icon;

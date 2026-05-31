@@ -15,6 +15,7 @@ import 'history_screen.dart';
 import 'ecg_screen.dart';
 import 'map_screen.dart';
 import 'messages_screen.dart';
+import 'emergency_screen.dart'; // ✅ import nécessaire
 
 class DashboardScreen extends StatefulWidget {
   const DashboardScreen({super.key});
@@ -31,6 +32,9 @@ class _DashboardScreenState extends State<DashboardScreen>
   // ✅ Channel Realtime pour confirmation ECG
   RealtimeChannel? _ecgConfirmChannel;
 
+  // ✅ Stocker la note médicale pour la passer à EmergencyScreen
+  String? _pendingCardiologistNote;
+
   @override
   void initState() {
     super.initState();
@@ -43,7 +47,6 @@ class _DashboardScreenState extends State<DashboardScreen>
       if (mounted && !_profileRefreshed) _refreshProfileIfNeeded();
       final app = Provider.of<AppProvider>(context, listen: false);
       if (app.bleStatus == 'idle') app.startAutoScan();
-      // ✅ Démarrer le listener ECG confirmation
       _subscribeToEcgConfirmation();
     });
   }
@@ -51,7 +54,6 @@ class _DashboardScreenState extends State<DashboardScreen>
   @override
   void dispose() {
     _ecgController.dispose();
-    // ✅ Nettoyer le channel Realtime
     _ecgConfirmChannel?.unsubscribe();
     super.dispose();
   }
@@ -81,13 +83,14 @@ class _DashboardScreenState extends State<DashboardScreen>
     }
   }
 
-  // ✅ Listener Realtime : cardiologue confirme une alerte ECG → dialog patient
+  // ✅ Listener Realtime : cardiologue confirme alerte ECG
+  //    → naviguer directement vers page rouge SAMU
   void _subscribeToEcgConfirmation() {
     final userId = _authService.currentUser?.id;
     if (userId == null) return;
 
     _ecgConfirmChannel = Supabase.instance.client
-        .channel('ecg_confirm_$userId')
+        .channel('ecg_confirm_dashboard_$userId')
         .onPostgresChanges(
           event: PostgresChangeEvent.update,
           schema: 'public',
@@ -100,82 +103,34 @@ class _DashboardScreenState extends State<DashboardScreen>
           callback: (payload) {
             final confirmedAt = payload.newRecord['confirmed_at'];
             final note = payload.newRecord['cardiologist_note'] as String?;
-            // Déclencher le dialog seulement si confirmed_at vient d'être rempli
+
             if (confirmedAt != null && mounted) {
-              _showEcgConfirmationDialog(note);
+              // ✅ Mettre à jour l'état dans AppProvider
+              final app = Provider.of<AppProvider>(context, listen: false);
+              app.confirmEmergency();
+
+              // ✅ Stocker la note médicale
+              _pendingCardiologistNote = note;
+
+              // ✅ Naviguer vers la page rouge SAMU
+              _navigateToEmergencyConfirmed(note);
             }
           },
         )
         .subscribe();
 
-    debugPrint(
-        '✅ [DASHBOARD] Realtime ECG confirmation subscribed for $userId');
+    debugPrint('✅ [DASHBOARD] Realtime ECG subscribed for $userId');
   }
 
-  // ✅ Dialog affiché au patient quand le cardiologue confirme l'alerte ECG
-  void _showEcgConfirmationDialog(String? note) {
-    showDialog(
-      context: context,
-      barrierDismissible: false,
-      builder: (_) => AlertDialog(
-        backgroundColor: const Color(0xFF0F1623),
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-        title: const Row(children: [
-          Icon(Icons.check_circle_rounded, color: Color(0xFF10B981), size: 22),
-          SizedBox(width: 8),
-          Flexible(
-            child: Text('Alerte prise en charge',
-                style: TextStyle(color: Colors.white, fontSize: 16)),
-          ),
-        ]),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            const Text(
-              'Votre cardiologue a confirmé votre alerte ECG et suit votre situation de près.',
-              style:
-                  TextStyle(color: Colors.white70, height: 1.5, fontSize: 13),
-            ),
-            if (note != null && note.isNotEmpty) ...[
-              const SizedBox(height: 14),
-              Container(
-                width: double.infinity,
-                padding: const EdgeInsets.all(12),
-                decoration: BoxDecoration(
-                  color: const Color(0xFF10B981).withOpacity(0.1),
-                  borderRadius: BorderRadius.circular(10),
-                  border: Border.all(
-                      color: const Color(0xFF10B981).withOpacity(0.3)),
-                ),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    const Text('📋 Note médicale',
-                        style: TextStyle(
-                            color: Color(0xFF10B981),
-                            fontSize: 11,
-                            fontWeight: FontWeight.bold)),
-                    const SizedBox(height: 6),
-                    Text(note,
-                        style: const TextStyle(
-                            color: Colors.white, fontSize: 13, height: 1.5)),
-                  ],
-                ),
-              ),
-            ],
-          ],
+  // ✅ Navigation vers EmergencyScreen en état confirmé
+  void _navigateToEmergencyConfirmed(String? note) {
+    if (!mounted) return;
+    Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => EmergencyScreen(
+          showBackButton: true,
+          initialCardiologistNote: note,
         ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text('OK',
-                style: TextStyle(
-                    color: Color(0xFF0EA5E9),
-                    fontWeight: FontWeight.bold,
-                    fontSize: 15)),
-          ),
-        ],
       ),
     );
   }
@@ -270,8 +225,17 @@ class _DashboardScreenState extends State<DashboardScreen>
                         MaterialPageRoute(builder: (_) => const EcgScreen())),
                   ),
                   const SizedBox(height: 12),
+
+                  // ✅ Bannière cliquable si urgence confirmée
+                  if (app.emergencyState == EmergencyState.confirmed)
+                    _EmergencyConfirmedBanner(
+                      onTap: () => _navigateToEmergencyConfirmed(
+                          _pendingCardiologistNote),
+                    ),
+
                   if (app.aiAlertPending ||
-                      app.emergencyState != EmergencyState.none)
+                      (app.emergencyState != EmergencyState.none &&
+                          app.emergencyState != EmergencyState.confirmed))
                     _AiAlertBanner(
                       app: app,
                       onTap: () => Navigator.push(
@@ -280,9 +244,11 @@ class _DashboardScreenState extends State<DashboardScreen>
                             builder: (_) => const MessagesScreen()),
                       ),
                     ),
+
                   if (app.aiAlertPending ||
                       app.emergencyState != EmergencyState.none)
                     const SizedBox(height: 12),
+
                   Row(
                     children: [
                       Expanded(
@@ -372,7 +338,66 @@ class _DashboardScreenState extends State<DashboardScreen>
 }
 
 // ══════════════════════════════════════════════════════════
-// Bannière alerte IA active (inchangée)
+// ✅ Bannière rouge urgence confirmée (cliquable)
+// ══════════════════════════════════════════════════════════
+class _EmergencyConfirmedBanner extends StatelessWidget {
+  final VoidCallback onTap;
+  const _EmergencyConfirmedBanner({required this.onTap});
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        width: double.infinity,
+        margin: const EdgeInsets.only(bottom: 12),
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+        decoration: BoxDecoration(
+          color: const Color(0xFFEF4444).withOpacity(0.15),
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(color: const Color(0xFFEF4444).withOpacity(0.5)),
+        ),
+        child: Row(children: [
+          Container(
+            width: 36,
+            height: 36,
+            decoration: BoxDecoration(
+              color: const Color(0xFFEF4444).withOpacity(0.2),
+              shape: BoxShape.circle,
+            ),
+            child: const Icon(Icons.emergency_rounded,
+                color: Color(0xFFEF4444), size: 20),
+          ),
+          const SizedBox(width: 12),
+          const Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text('URGENCE CONFIRMÉE',
+                    style: TextStyle(
+                        color: Color(0xFFEF4444),
+                        fontSize: 13,
+                        fontWeight: FontWeight.w900,
+                        letterSpacing: 0.5)),
+                SizedBox(height: 2),
+                Text('Cardiologue en charge — Appuyer pour voir',
+                    style: TextStyle(
+                        color: Color(0xFFEF4444),
+                        fontSize: 11,
+                        fontWeight: FontWeight.w500)),
+              ],
+            ),
+          ),
+          const Icon(Icons.arrow_forward_rounded,
+              color: Color(0xFFEF4444), size: 18),
+        ]),
+      ),
+    );
+  }
+}
+
+// ══════════════════════════════════════════════════════════
+// Bannière alerte IA active
 // ══════════════════════════════════════════════════════════
 class _AiAlertBanner extends StatelessWidget {
   final AppProvider app;
@@ -425,7 +450,7 @@ class _AiAlertBanner extends StatelessWidget {
 }
 
 // ══════════════════════════════════════════════════════════
-// Disclaimer Banner (inchangée)
+// Disclaimer Banner
 // ══════════════════════════════════════════════════════════
 class _DisclaimerBanner extends StatelessWidget {
   final Color textPrimary, primary;
@@ -457,7 +482,7 @@ class _DisclaimerBanner extends StatelessWidget {
 }
 
 // ══════════════════════════════════════════════════════════
-// Status Card (inchangée)
+// Status Card
 // ══════════════════════════════════════════════════════════
 class _StatusCard extends StatelessWidget {
   final HealthStatus status;
@@ -517,7 +542,7 @@ class _StatusCard extends StatelessWidget {
 }
 
 // ══════════════════════════════════════════════════════════
-// Risk Card (inchangée)
+// Risk Card
 // ══════════════════════════════════════════════════════════
 class _RiskCard extends StatelessWidget {
   final int riskScore;
@@ -553,7 +578,7 @@ class _RiskCard extends StatelessWidget {
 }
 
 // ══════════════════════════════════════════════════════════
-// ECG Preview Card (inchangée)
+// ECG Preview Card
 // ══════════════════════════════════════════════════════════
 class _EcgPreviewCard extends StatelessWidget {
   final AnimationController controller;
@@ -675,7 +700,7 @@ class _LiveDotState extends State<_LiveDot>
 }
 
 // ══════════════════════════════════════════════════════════
-// BLE Status Card (inchangée)
+// BLE Status Card
 // ══════════════════════════════════════════════════════════
 class _BleStatusCard extends StatelessWidget {
   final String bleStatus, deviceName;
@@ -774,7 +799,7 @@ class _BleStatusCard extends StatelessWidget {
 }
 
 // ══════════════════════════════════════════════════════════
-// Quick Actions (inchangée)
+// Quick Actions
 // ══════════════════════════════════════════════════════════
 class _QuickActions extends StatelessWidget {
   final Color primary;
@@ -848,15 +873,16 @@ class _QuickAction {
   final String label;
   final Color color;
   final VoidCallback? onTap;
-  _QuickAction(
-      {required this.icon,
-      required this.label,
-      required this.color,
-      this.onTap});
+  _QuickAction({
+    required this.icon,
+    required this.label,
+    required this.color,
+    this.onTap,
+  });
 }
 
 // ══════════════════════════════════════════════════════════
-// History Item (inchangée)
+// History Item
 // ══════════════════════════════════════════════════════════
 class _HistoryItem extends StatelessWidget {
   final EcgReading reading;
